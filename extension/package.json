@@ -3,7 +3,7 @@
   "displayName": "RemoteFS",
   "description": "Remote Filesystem and Search Provider for VS Code",
   "version": "0.1.0",
-  "publisher": "Nauman Ahmed",
+  "publisher": "naumanahmed",
   "engines": {
     "vscode": "^1.85.0"
   },
