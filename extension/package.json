@@ -16,6 +16,10 @@
     "onCommand:remotefs.openWorkspace"
   ],
   "main": "./dist/extension.js",
+  "enabledApiProposals": [
+    "textSearchProvider",
+    "fileSearchProvider"
+  ],
   "contributes": {
     "languages": [],
     "grammars": [],
