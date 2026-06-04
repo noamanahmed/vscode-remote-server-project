@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
          * Lazy client getter (safe pattern)
          * Providers should NOT connect to daemon in constructor.
          */
-        const getClient = () => remoteFSProvider.getClient?.();
+        const getClient = (uri: vscode.Uri) => remoteFSProvider.getClient(uri);
 
         /**
          * Text Search Provider

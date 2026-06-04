@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { RPCClient } from '../rpc/client';
 
 export class RemoteFileSearchProvider {
-    constructor(private getClient: () => RPCClient | undefined) {}
+    constructor(private getClient: (uri: vscode.Uri) => RPCClient) {}
 
     private getRemotePath(uri: vscode.Uri): string {
         const query = uri.query;
@@ -17,7 +17,7 @@ export class RemoteFileSearchProvider {
     }
 
     async provideFileSearchResults(options: any, token: vscode.CancellationToken): Promise<vscode.Uri[]> {
-        const client = this.getClient();
+        const client = this.getClient(options.folder);
         if (!client) {
             return [];
         }

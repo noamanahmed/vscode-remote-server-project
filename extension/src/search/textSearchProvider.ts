@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { RPCClient } from '../rpc/client';
 
 export class RemoteTextSearchProvider {
-    constructor(private getClient: () => RPCClient | undefined) {}
+    constructor(private getClient: (uri: vscode.Uri) => RPCClient) {}
 
     private getRemotePath(uri: vscode.Uri): string {
         const query = uri.query;
@@ -17,7 +17,7 @@ export class RemoteTextSearchProvider {
     }
 
     async provideTextSearchResults(query: any, options: any, progress: vscode.Progress<any>, token: vscode.CancellationToken): Promise<any> {
-        const client = this.getClient();
+        const client = this.getClient(options.folder);
         if (!client) {
             return { limitHit: false, message: { text: 'Client not initialized', type: 1 } };
         }

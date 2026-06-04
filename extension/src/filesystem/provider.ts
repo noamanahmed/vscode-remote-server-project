@@ -8,24 +8,14 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
     private _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._onDidChangeFile.event;
 
-    private client: RPCClient;
+    private clients = new Map<string, RPCClient>();
 
     constructor() {
-        const config = vscode.workspace.getConfiguration('remotefs');
-        const host = config.get<string>('host', 'localhost');
-        const port = config.get<number>('port', 8765);
-        
-        const url = `ws://${host}:${port}/ws`;
-        this.client = new RPCClient(url);
-
-        // Listen for configuration changes
+        // Listen for configuration changes to possibly update existing clients
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('remotefs.host') || e.affectsConfiguration('remotefs.port')) {
-                const newConfig = vscode.workspace.getConfiguration('remotefs');
-                const newHost = newConfig.get<string>('host', 'localhost');
-                const newPort = newConfig.get<number>('port', 8765);
-                const newUrl = `ws://${newHost}:${newPort}/ws`;
-                this.client.setUrl(newUrl);
+                // For simplicity, we'll just let new connections use the new global config
+                // and existing ones stay as they are defined by their workspace folder URIs.
             }
         });
     }
@@ -34,12 +24,42 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
         return uri.path;
     }
 
-    public getClient(): RPCClient {
-        return this.client;
+    public getClient(uri: vscode.Uri): RPCClient {
+        const query = uri.query;
+        let host = 'localhost';
+        let port = 8765;
+
+        if (query) {
+            const params = new URLSearchParams(query);
+            host = params.get('host') || vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
+            const portParam = params.get('port');
+            port = portParam ? parseInt(portParam) : vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+        } else {
+            host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
+            port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+        }
+
+        const url = `ws://${host}:${port}/ws`;
+        let client = this.clients.get(url);
+        if (!client) {
+            client = new RPCClient(url);
+            this.clients.set(url, client);
+        }
+        return client;
     }
 
-    public async testConnection(): Promise<void> {
-        await this.client.connect();
+    public async testConnection(uri?: vscode.Uri): Promise<void> {
+        // If no URI provided, use global config for a general test
+        const host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
+        const port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+        const url = `ws://${host}:${port}/ws`;
+        
+        let client = this.clients.get(url);
+        if (!client) {
+            client = new RPCClient(url);
+            this.clients.set(url, client);
+        }
+        await client.connect();
     }
 
     watch(uri: vscode.Uri, options: { readonly recursive: boolean; readonly excludes: readonly string[] }): vscode.Disposable {

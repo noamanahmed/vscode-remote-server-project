@@ -59,9 +59,9 @@ sshfs user@<server-ip>:/var/www/project /mnt/nfs/project
 3. Follow the prompts to enter Host, Port, Remote Path, and Local Mount Path.
 
 ### CLI One-Liner
-Open a remote workspace directly from your terminal:
+Open a remote workspace directly from your terminal with custom connection settings:
 ```bash
-code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project"
+code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project&host=10.0.0.1&port=8765"
 ```
 
 ## Configuration
