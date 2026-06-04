@@ -1,13 +1,13 @@
 #!/sbin/openrc-run
 
 # RemoteFS Daemon OpenRC Init Script
-# Assume project is cloned at /opt/vscode-server-project
+# Assume project is cloned at /opt/vscode-remote-server-project
 
 name="remotefs"
 description="RemoteFS Daemon for VSCode"
 
 # Configuration
-: ${REMOTEF_DIR:="/opt/vscode-server-project/daemon"}
+: ${REMOTEF_DIR:="/opt/vscode-remote-server-project/daemon"}
 : ${REMOTEF_USER:="root"}
 : ${REMOTEF_GROUP:="root"}
 : ${REMOTEF_BIN:="${REMOTEF_DIR}/venv/bin/python3"}

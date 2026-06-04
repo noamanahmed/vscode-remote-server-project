@@ -39,14 +39,14 @@ python3 -m app.main
 
 ## Auto-start on Boot
 
-If the project is cloned to `/opt/vscode-server-project`, you can use the provided startup scripts.
+If the project is cloned to `/opt/vscode-remote-server-project`, you can use the provided startup scripts.
 
 ### For Systemd (Ubuntu, Debian, CentOS, etc.)
 
-1. Edit `remotefs.service` if needed (it assumes `/opt/vscode-server-project`).
+1. Edit `remotefs.service` if needed (it assumes `/opt/vscode-remote-server-project`).
 2. Copy the service file to systemd:
    ```bash
-   sudo cp /opt/vscode-server-project/remotefs.service /etc/systemd/system/
+   sudo cp /opt/vscode-remote-server-project/remotefs.service /etc/systemd/system/
    ```
 3. Enable and start:
    ```bash
@@ -58,7 +58,7 @@ If the project is cloned to `/opt/vscode-server-project`, you can use the provid
 
 1. Move the init script:
    ```bash
-   sudo cp /opt/vscode-server-project/remotefs.init /etc/init.d/remotefs
+   sudo cp /opt/vscode-remote-server-project/remotefs.init /etc/init.d/remotefs
    ```
 2. Make it executable:
    ```bash
