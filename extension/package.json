@@ -39,6 +39,11 @@
           "type": "number",
           "default": 8765,
           "description": "Port of the remote daemon"
+        },
+        "remotefs.localRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Local path where the remote filesystem is mounted (e.g. /mnt/server)"
         }
       }
     },

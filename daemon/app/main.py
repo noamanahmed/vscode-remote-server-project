@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from .rpc.protocol import RPCRequest, RPCResponse
 from .filesystem import operations
+from .search import ripgrep
 
 # Configure logging
 logging.basicConfig(
@@ -27,13 +28,30 @@ async def websocket_endpoint(websocket: WebSocket):
             message = json.loads(data)
             request = RPCRequest(**message)
             
-            response = await handle_request(request)
-            await websocket.send_text(response.json())
+            # Special handling for streaming search
+            if request.type == "search":
+                try:
+                    async for result in ripgrep.run_search(request.payload["pattern"], request.payload["path"], request.payload.get("options")):
+                        event = RPCResponse(id=request.id, type="searchResult", payload=result)
+                        await websocket.send_text(event.json())
+                    
+                    done_response = RPCResponse(id=request.id, type="done")
+                    await websocket.send_text(done_response.json())
+                except Exception as e:
+                    logger.error(f"Search error: {e}")
+                    error_response = RPCResponse(id=request.id, type="error", error=str(e))
+                    await websocket.send_text(error_response.json())
+            else:
+                response = await handle_request(request)
+                await websocket.send_text(response.json())
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        await websocket.close()
+        try:
+            await websocket.close()
+        except:
+            pass
 
 async def handle_request(request: RPCRequest) -> RPCResponse:
     payload = request.payload
@@ -57,6 +75,10 @@ async def handle_request(request: RPCRequest) -> RPCResponse:
             await operations.write_file(payload["path"], content)
             return RPCResponse(id=request.id, type="writeFile", payload={"success": True})
         
+        elif request.type == "fileSearch":
+            result = await ripgrep.run_file_search(payload.get("pattern", ""), payload["path"])
+            return RPCResponse(id=request.id, type="fileSearch", payload={"files": result})
+            
         else:
             logger.warning(f"Unknown request type: {request.type}")
             return RPCResponse(id=request.id, type="error", error=f"Unknown request type: {request.type}")

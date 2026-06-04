@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { RPCClient } from '../rpc/client';
 import { logger } from '../logger';
 
@@ -7,13 +9,15 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
     readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._onDidChangeFile.event;
 
     private client: RPCClient;
+    private localRoot: string = '';
 
     constructor() {
         const config = vscode.workspace.getConfiguration('remotefs');
         const host = config.get<string>('host', 'localhost');
         const port = config.get<number>('port', 8765);
-        const url = `ws://${host}:${port}/ws`;
+        this.localRoot = config.get<string>('localRoot', '');
         
+        const url = `ws://${host}:${port}/ws`;
         this.client = new RPCClient(url);
 
         // Listen for configuration changes
@@ -25,7 +29,23 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
                 const newUrl = `ws://${newHost}:${newPort}/ws`;
                 this.client.setUrl(newUrl);
             }
+            if (e.affectsConfiguration('remotefs.localRoot')) {
+                this.localRoot = vscode.workspace.getConfiguration('remotefs').get<string>('localRoot', '');
+                logger.info(`Local root updated to: ${this.localRoot}`);
+            }
         });
+    }
+
+    private toLocalPath(uri: vscode.Uri): string {
+        if (!this.localRoot) {
+            // If no local root is configured, we assume the path is absolute and accessible
+            return uri.path;
+        }
+        return path.join(this.localRoot, uri.path);
+    }
+
+    public getClient(): RPCClient {
+        return this.client;
     }
 
     public async testConnection(): Promise<void> {
@@ -37,43 +57,84 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
     }
 
     async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-        logger.info(`stat: ${uri.path}`);
-        const res = await this.client.call('stat', { path: uri.path });
-        return {
-            type: res.type,
-            ctime: res.ctime,
-            mtime: res.mtime,
-            size: res.size
-        };
+        const localPath = this.toLocalPath(uri);
+        logger.info(`stat (local): ${localPath}`);
+        
+        try {
+            const stats = await fs.promises.stat(localPath);
+            return {
+                type: stats.isFile() ? vscode.FileType.File : stats.isDirectory() ? vscode.FileType.Directory : vscode.FileType.Unknown,
+                ctime: stats.ctimeMs,
+                mtime: stats.mtimeMs,
+                size: stats.size
+            };
+        } catch (err: any) {
+            logger.error(`stat failed for ${localPath}: ${err.message}`);
+            throw vscode.FileSystemError.FileNotFound(uri);
+        }
     }
 
     async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-        logger.info(`readDirectory: ${uri.path}`);
-        const res = await this.client.call('readDirectory', { path: uri.path });
-        return res.entries.map((entry: any) => [entry.name, entry.type]);
-    }
-
-    createDirectory(uri: vscode.Uri): void | Thenable<void> {
-        logger.info(`createDirectory: ${uri.path}`);
+        const localPath = this.toLocalPath(uri);
+        logger.info(`readDirectory (local): ${localPath}`);
+        
+        try {
+            const entries = await fs.promises.readdir(localPath, { withFileTypes: true });
+            return entries.map(entry => {
+                const type = entry.isFile() ? vscode.FileType.File : entry.isDirectory() ? vscode.FileType.Directory : vscode.FileType.Unknown;
+                return [entry.name, type];
+            });
+        } catch (err: any) {
+            logger.error(`readDirectory failed for ${localPath}: ${err.message}`);
+            throw vscode.FileSystemError.FileNotFound(uri);
+        }
     }
 
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-        logger.info(`readFile: ${uri.path}`);
-        const res = await this.client.call('readFile', { path: uri.path });
-        return Buffer.from(res.content, 'base64');
+        const localPath = this.toLocalPath(uri);
+        logger.info(`readFile (local): ${localPath}`);
+        
+        try {
+            const content = await fs.promises.readFile(localPath);
+            return new Uint8Array(content);
+        } catch (err: any) {
+            logger.error(`readFile failed for ${localPath}: ${err.message}`);
+            throw vscode.FileSystemError.FileNotFound(uri);
+        }
     }
 
     async writeFile(uri: vscode.Uri, content: Uint8Array, options: { readonly create: boolean; readonly overwrite: boolean }): Promise<void> {
-        logger.info(`writeFile: ${uri.path}`);
-        const contentBase64 = Buffer.from(content).toString('base64');
-        await this.client.call('writeFile', { path: uri.path, content: contentBase64 });
+        const localPath = this.toLocalPath(uri);
+        logger.info(`writeFile (local): ${localPath}`);
+        
+        try {
+            const dir = path.dirname(localPath);
+            if (!fs.existsSync(dir)) {
+                await fs.promises.mkdir(dir, { recursive: true });
+            }
+            await fs.promises.writeFile(localPath, content);
+        } catch (err: any) {
+            logger.error(`writeFile failed for ${localPath}: ${err.message}`);
+            throw err;
+        }
     }
 
-    delete(uri: vscode.Uri, options: { readonly recursive: boolean }): void | Thenable<void> {
-        logger.info(`delete: ${uri.path}`);
+    async createDirectory(uri: vscode.Uri): Promise<void> {
+        const localPath = this.toLocalPath(uri);
+        logger.info(`createDirectory (local): ${localPath}`);
+        await fs.promises.mkdir(localPath, { recursive: true });
     }
 
-    rename(uri: vscode.Uri, newUri: vscode.Uri, options: { readonly overwrite: boolean }): void | Thenable<void> {
-        logger.info(`rename: ${uri.path} -> ${newUri.path}`);
+    async delete(uri: vscode.Uri, options: { readonly recursive: boolean }): Promise<void> {
+        const localPath = this.toLocalPath(uri);
+        logger.info(`delete (local): ${localPath}`);
+        await fs.promises.rm(localPath, { recursive: options.recursive });
+    }
+
+    async rename(uri: vscode.Uri, newUri: vscode.Uri, options: { readonly overwrite: boolean }): Promise<void> {
+        const oldPath = this.toLocalPath(uri);
+        const newPath = this.toLocalPath(newUri);
+        logger.info(`rename (local): ${oldPath} -> ${newPath}`);
+        await fs.promises.rename(oldPath, newPath);
     }
 }

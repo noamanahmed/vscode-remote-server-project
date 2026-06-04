@@ -1,17 +1,28 @@
 import * as vscode from 'vscode';
 import { RemoteFSProvider } from './filesystem/provider';
+import { RemoteTextSearchProvider } from './search/textSearchProvider';
+import { RemoteFileSearchProvider } from './search/fileSearchProvider';
 import { logger } from './logger';
 
 export function activate(context: vscode.ExtensionContext) {
     logger.info('RemoteFS extension is now active');
 
     const remoteFSProvider = new RemoteFSProvider();
+    const client = remoteFSProvider.getClient();
     
     context.subscriptions.push(
         vscode.workspace.registerFileSystemProvider('remotefs', remoteFSProvider, {
             isCaseSensitive: true,
             isReadonly: false
         })
+    );
+
+    context.subscriptions.push(
+        (vscode.workspace as any).registerTextSearchProvider('remotefs', new RemoteTextSearchProvider(client) as any)
+    );
+
+    context.subscriptions.push(
+        (vscode.workspace as any).registerFileSearchProvider('remotefs', new RemoteFileSearchProvider(client) as any)
     );
 
     context.subscriptions.push(
