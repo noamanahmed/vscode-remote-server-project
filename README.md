@@ -37,6 +37,39 @@ sudo apt install ripgrep
 python3 -m app.main
 ```
 
+## Auto-start on Boot
+
+If the project is cloned to `/opt/vscode-nfs-project`, you can use the provided startup scripts.
+
+### For Systemd (Ubuntu, Debian, CentOS, etc.)
+
+1. Edit `remotefs.service` if needed (it assumes `/opt/vscode-nfs-project`).
+2. Copy the service file to systemd:
+   ```bash
+   sudo cp /opt/vscode-nfs-project/remotefs.service /etc/systemd/system/
+   ```
+3. Enable and start:
+   ```bash
+   sudo systemctl enable remotefs
+   sudo systemctl start remotefs
+   ```
+
+### For OpenRC (Alpine, Gentoo, etc.)
+
+1. Move the init script:
+   ```bash
+   sudo cp /opt/vscode-nfs-project/remotefs.init /etc/init.d/remotefs
+   ```
+2. Make it executable:
+   ```bash
+   sudo chmod +x /etc/init.d/remotefs
+   ```
+3. Start and enable:
+   ```bash
+   sudo rc-service remotefs start
+   sudo rc-update add remotefs default
+   ```
+
 ## Mounting the Remote Filesystem
 
 RemoteFS works best when your remote project folder is mounted locally.
