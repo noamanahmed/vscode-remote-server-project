@@ -1,19 +1,19 @@
 # RemoteFS VS Code Extension
 
-A high-performance remote filesystem provider for VS Code that completely avoids NFS/SSHFS overhead by moving file operations and search to a remote daemon.
+A high-performance **Hybrid Remote Filesystem** provider for VS Code. It combines the speed of local filesystem access (via NFS/SSHFS) with the power of server-side searching (via `ripgrep`).
 
 ## Architecture
 
-- **Extension**: VS Code extension that implements `FileSystemProvider`, `TextSearchProvider`, and `FileSearchProvider` using the `remotefs://` scheme.
-- **Daemon**: A Python 3.12+ backend running on the server, exposing a WebSocket RPC API for filesystem and search operations.
+- **Hybrid Filesystem**: Standard operations (read/write/directory listing) are performed locally on a mounted remote folder, ensuring zero network lag for common IDE tasks.
+- **Remote Search Daemon**: A Python 3.12+ backend running on the server, leveraging `ripgrep` to perform blazing fast global searches and streaming results back to VS Code via WebSockets.
 
-## Features (Phase 1)
+## Features
 
-- [x] Basic Filesystem Provider (`remotefs://`)
-- [x] Browsing remote directories
-- [x] Opening / Reading remote files
-- [x] Saving / Writing remote files
-- [x] Supporting Multiple Projects via absolute paths
+- [x] **Hybrid IO**: Blazing fast file access via local mount (NFS/SSHFS).
+- [x] **Remote Search**: Deep project search using `ripgrep` on the server.
+- [x] **Dual Path Mapping**: Map high-level remote paths to specific local mount points per workspace folder.
+- [x] **Streaming Results**: Search results appear in real-time as they are found.
+- [x] **Lazy Initialization**: Minimal overhead, daemon connection only starts when needed.
 
 ## Installation
 
@@ -21,57 +21,57 @@ A high-performance remote filesystem provider for VS Code that completely avoids
 
 ```bash
 cd daemon
-python3 -m venv venv --without-pip
+python3 -m venv venv
 source venv/bin/activate
-curl https://bootstrap.pypa.io/get-pip.py | python3
 pip install -r requirements.txt
 ```
 
-### 2. Run Daemon
+### 2. Install ripgrep
+The daemon requires `ripgrep` (`rg`) to be installed and in the server's `$PATH`.
+```bash
+sudo apt install ripgrep
+```
 
-You can run the daemon manually:
+### 3. Run Daemon
 ```bash
 python3 -m app.main
 ```
-Or set up a systemd service (see below).
 
-### 3. Setup Extension (Locally)
+## Mounting the Remote Filesystem
 
+RemoteFS works best when your remote project folder is mounted locally.
+
+### Via NFS (Recommended for Performance)
 ```bash
-cd extension
-npm install
-npm run compile
+sudo mount -t nfs <server-ip>:/var/www/project /mnt/nfs/project
 ```
 
-Open the `extension` folder in VS Code and press `F5` to launch the extension in a new window.
+### Via SSHFS
+```bash
+sshfs user@<server-ip>:/var/www/project /mnt/nfs/project
+```
 
 ## Usage
 
+### Direct Setup
 1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run `RemoteFS: Open Remote Workspace`.
-3. Enter the absolute path on the remote server (e.g., `/home/user/my-project`).
-4. The remote folder will be added to your current VS Code workspace.
+2. Run `RemoteFS: Setup Connection`.
+3. Follow the prompts to enter Host, Port, Remote Path, and Local Mount Path.
 
-## Systemd Setup
+### CLI One-Liner
+Open a remote workspace directly from your terminal:
+```bash
+code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project"
+```
 
-To run the daemon as a background service:
+## Configuration
 
-1. Copy the service file (edit `User` and `WorkingDirectory` if needed):
-   ```bash
-   sudo cp remotefs.service /etc/systemd/system/
-   ```
-2. Reload systemd and start the service:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable remotefs
-   sudo systemctl start remotefs
-   ```
-3. Check status:
-   ```bash
-   sudo systemctl status remotefs
-   ```
+Settings are managed in VS Code settings under `remotefs.*`:
+- `remotefs.host`: Daemon host address (default: `localhost`).
+- `remotefs.port`: Daemon port (default: `8765`).
 
 ## Requirements
 
-- **Server**: Python 3.12+, `ripgrep` (for future phases)
-- **Client**: VS Code 1.85.0+
+- **Server**: Python 3.12+, `ripgrep`.
+- **Client**: VS Code 1.85.0+.
+- **Mount**: NFS or SSHFS recommended for optimal file IO performance.

@@ -139,6 +139,65 @@ export function activate(context: vscode.ExtensionContext) {
             })
         );
 
+        /**
+         * Setup Connection command (Full setup)
+         */
+        context.subscriptions.push(
+            vscode.commands.registerCommand('remotefs.setupConnection', async () => {
+                try {
+                    const config = vscode.workspace.getConfiguration('remotefs');
+                    
+                    const host = await vscode.window.showInputBox({
+                        prompt: 'Enter Daemon Host',
+                        value: config.get<string>('host', 'localhost')
+                    });
+                    if (host === undefined) return;
+
+                    const portStr = await vscode.window.showInputBox({
+                        prompt: 'Enter Daemon Port',
+                        value: config.get<number>('port', 8765).toString()
+                    });
+                    if (portStr === undefined) return;
+                    const port = parseInt(portStr);
+
+                    const remotePath = await vscode.window.showInputBox({
+                        prompt: 'Enter absolute path on remote server',
+                        placeHolder: '/var/www/remote-project'
+                    });
+                    if (!remotePath) return;
+
+                    const localPath = await vscode.window.showInputBox({
+                        prompt: 'Enter local mount path of the remote folder',
+                        placeHolder: '/mnt/nfs/remote-project'
+                    });
+                    if (!localPath) return;
+
+                    // Update global configuration for host/port
+                    await config.update('host', host, vscode.ConfigurationTarget.Global);
+                    await config.update('port', port, vscode.ConfigurationTarget.Global);
+
+                    // Open the workspace
+                    const uri = vscode.Uri.parse(`remotefs:${localPath}`).with({
+                        query: `remote=${encodeURIComponent(remotePath)}`
+                    });
+
+                    vscode.workspace.updateWorkspaceFolders(
+                        vscode.workspace.workspaceFolders?.length || 0,
+                        0,
+                        {
+                            uri,
+                            name: `Remote: ${path.basename(remotePath)}`
+                        }
+                    );
+
+                    vscode.window.showInformationMessage(`RemoteFS: Setup complete! Connected to ${host}:${port}`);
+                } catch (err: any) {
+                    logger.error(`setupConnection failed: ${err?.message ?? err}`);
+                    vscode.window.showErrorMessage('Failed to setup connection');
+                }
+            })
+        );
+
         logger.info('RemoteFS extension activated successfully');
     } catch (err: any) {
         /**

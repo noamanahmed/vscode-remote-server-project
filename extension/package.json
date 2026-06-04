@@ -29,6 +29,10 @@
         "title": "RemoteFS: Open Remote Workspace"
       },
       {
+        "command": "remotefs.setupConnection",
+        "title": "RemoteFS: Setup Connection"
+      },
+      {
         "command": "remotefs.testConnection",
         "title": "RemoteFS: Test Connection"
       }
