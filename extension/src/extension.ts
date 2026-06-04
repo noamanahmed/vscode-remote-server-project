@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { RemoteFSProvider } from './filesystem/provider';
 import { RemoteTextSearchProvider } from './search/textSearchProvider';
 import { RemoteFileSearchProvider } from './search/fileSearchProvider';
@@ -61,23 +62,35 @@ export function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(
             vscode.commands.registerCommand('remotefs.openWorkspace', async () => {
                 try {
-                    const path = await vscode.window.showInputBox({
+                    const remotePath = await vscode.window.showInputBox({
                         prompt: 'Enter absolute path on remote server',
-                        placeHolder: '/path/to/project'
+                        placeHolder: '/var/www/remote-project'
                     });
 
-                    if (!path) {
+                    if (!remotePath) {
                         return;
                     }
 
-                    const uri = vscode.Uri.parse(`remotefs:${path}`);
+                    const localPath = await vscode.window.showInputBox({
+                        prompt: 'Enter local mount path of the remote folder',
+                        placeHolder: '/mnt/nfs/remote-project'
+                    });
+
+                    if (!localPath) {
+                        return;
+                    }
+
+                    // Encode mapping in URI: remotefs:/local/mount?remote=/remote/path
+                    const uri = vscode.Uri.parse(`remotefs:${localPath}`).with({
+                        query: `remote=${encodeURIComponent(remotePath)}`
+                    });
 
                     vscode.workspace.updateWorkspaceFolders(
                         vscode.workspace.workspaceFolders?.length || 0,
                         0,
                         {
                             uri,
-                            name: `Remote: ${path}`
+                            name: `Remote: ${path.basename(remotePath)}`
                         }
                     );
                 } catch (err: any) {

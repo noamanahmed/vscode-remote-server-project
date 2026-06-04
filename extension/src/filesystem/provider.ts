@@ -9,13 +9,11 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
     readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._onDidChangeFile.event;
 
     private client: RPCClient;
-    private localRoot: string = '';
 
     constructor() {
         const config = vscode.workspace.getConfiguration('remotefs');
         const host = config.get<string>('host', 'localhost');
         const port = config.get<number>('port', 8765);
-        this.localRoot = config.get<string>('localRoot', '');
         
         const url = `ws://${host}:${port}/ws`;
         this.client = new RPCClient(url);
@@ -29,19 +27,11 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
                 const newUrl = `ws://${newHost}:${newPort}/ws`;
                 this.client.setUrl(newUrl);
             }
-            if (e.affectsConfiguration('remotefs.localRoot')) {
-                this.localRoot = vscode.workspace.getConfiguration('remotefs').get<string>('localRoot', '');
-                logger.info(`Local root updated to: ${this.localRoot}`);
-            }
         });
     }
 
     private toLocalPath(uri: vscode.Uri): string {
-        if (!this.localRoot) {
-            // If no local root is configured, we assume the path is absolute and accessible
-            return uri.path;
-        }
-        return path.join(this.localRoot, uri.path);
+        return uri.path;
     }
 
     public getClient(): RPCClient {
