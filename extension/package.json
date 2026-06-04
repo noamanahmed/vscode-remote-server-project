@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onFileSystem:remotefs"
+    "onFileSystem:remotefs",
+    "onCommand:remotefs.testConnection",
+    "onCommand:remotefs.openWorkspace"
   ],
   "main": "./dist/extension.js",
   "contributes": {
