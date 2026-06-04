@@ -87,6 +87,19 @@ async def handle_request(request: RPCRequest) -> RPCResponse:
         logger.error(f"Error handling request {request.type}: {e}")
         return RPCResponse(id=request.id, type="error", error=str(e))
 
+import sys
+import shutil
+
+def check_ripgrep():
+    if not shutil.which('rg'):
+        logger.error("Ripgrep ('rg') is not installed or not in PATH. Please install it (e.g. 'sudo apt install ripgrep').")
+        return False
+    logger.info("Ripgrep ('rg') found.")
+    return True
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8765)
+    if check_ripgrep():
+        uvicorn.run(app, host="0.0.0.0", port=8765)
+    else:
+        sys.exit(1)

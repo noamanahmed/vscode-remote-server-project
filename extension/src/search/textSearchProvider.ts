@@ -2,9 +2,14 @@ import * as vscode from 'vscode';
 import { RPCClient } from '../rpc/client';
 
 export class RemoteTextSearchProvider {
-    constructor(private client: RPCClient) {}
+    constructor(private getClient: () => RPCClient | undefined) {}
 
     async provideTextSearchResults(query: any, options: any, progress: vscode.Progress<any>, token: vscode.CancellationToken): Promise<any> {
+        const client = this.getClient();
+        if (!client) {
+            return { limitHit: false, message: { text: 'Client not initialized', type: 1 } };
+        }
+
         const payload = {
             pattern: query.pattern,
             path: options.folder.path,
@@ -18,7 +23,7 @@ export class RemoteTextSearchProvider {
         };
 
         try {
-            for await (const result of this.client.stream('search', payload)) {
+            for await (const result of client.stream('search', payload)) {
                 if (token.isCancellationRequested) {
                     break;
                 }
