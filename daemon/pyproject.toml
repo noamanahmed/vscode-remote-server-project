@@ -1,0 +1,19 @@
+[project]
+name = "remotefs-daemon"
+version = "0.1.0"
+description = "Remote filesystem daemon for VS Code"
+authors = [
+    { name = "Novos Labs" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    "pydantic",
+    "aiofiles",
+    "watchdog"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

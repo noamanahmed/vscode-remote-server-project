@@ -1,0 +1,13 @@
+[Unit]
+Description=RemoteFS Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=%u
+WorkingDirectory=/var/www/projectsvscode-nfs-project
+ExecStart=/var/www/projectsvscode-nfs-project/daemon/venv/bin/python3 -m app.main
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

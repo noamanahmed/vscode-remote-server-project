@@ -1,0 +1,46 @@
+{
+  "name": "remotefs",
+  "displayName": "RemoteFS",
+  "description": "Remote Filesystem and Search Provider for VS Code",
+  "version": "0.1.0",
+  "publisher": "novoslabs",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onFileSystem:remotefs"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [],
+    "grammars": [],
+    "commands": [
+      {
+        "command": "remotefs.openWorkspace",
+        "title": "RemoteFS: Open Remote Workspace"
+      }
+    ],
+    "menus": {},
+    "submenus": []
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --minify",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3"
+  }
+}

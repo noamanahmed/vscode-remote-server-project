@@ -1,0 +1,17 @@
+services:
+  daemon:
+    build:
+      context: ./daemon
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./daemon:/app
+      - /:/host_root:ro # Optional: allow daemon to access host files for remote FS
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+
+networks:
+  default:
+    name: remotefs-network
