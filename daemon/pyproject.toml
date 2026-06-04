@@ -3,7 +3,7 @@ name = "remotefs-daemon"
 version = "0.1.0"
 description = "Remote filesystem daemon for VS Code"
 authors = [
-    { name = "Novos Labs" }
+    { name = "Nauman Ahmed" }
 ]
 dependencies = [
     "fastapi",
