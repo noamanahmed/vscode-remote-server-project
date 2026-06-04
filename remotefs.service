@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=%u
-WorkingDirectory=/opt/vscode-nfs-project
-ExecStart=/opt/vscode-nfs-project/daemon/venv/bin/python3 -m app.main
+WorkingDirectory=/opt/vscode-server-project
+ExecStart=/opt/vscode-server-project/daemon/venv/bin/python3 -m app.main
 Restart=always
 
 [Install]
