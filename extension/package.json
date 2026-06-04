@@ -21,8 +21,27 @@
       {
         "command": "remotefs.openWorkspace",
         "title": "RemoteFS: Open Remote Workspace"
+      },
+      {
+        "command": "remotefs.testConnection",
+        "title": "RemoteFS: Test Connection"
       }
     ],
+    "configuration": {
+      "title": "RemoteFS",
+      "properties": {
+        "remotefs.host": {
+          "type": "string",
+          "default": "localhost",
+          "description": "Host name of the remote daemon"
+        },
+        "remotefs.port": {
+          "type": "number",
+          "default": 8765,
+          "description": "Port of the remote daemon"
+        }
+      }
+    },
     "menus": {},
     "submenus": []
   },

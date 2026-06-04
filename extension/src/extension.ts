@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { RemoteFSProvider } from './filesystem/provider';
+import { logger } from './logger';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('RemoteFS extension is now active');
+    logger.info('RemoteFS extension is now active');
 
     const remoteFSProvider = new RemoteFSProvider();
+    
     context.subscriptions.push(
         vscode.workspace.registerFileSystemProvider('remotefs', remoteFSProvider, {
             isCaseSensitive: true,
@@ -28,6 +30,28 @@ export function activate(context: vscode.ExtensionContext) {
             }
         })
     );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('remotefs.testConnection', async () => {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "RemoteFS: Testing Connection...",
+                cancellable: false
+            }, async () => {
+                try {
+                    await remoteFSProvider.testConnection();
+                    vscode.window.showInformationMessage('RemoteFS: Connection successful!');
+                    logger.info('Connection test successful');
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`RemoteFS: Connection failed! ${err.message}`);
+                    logger.error(`Connection test failed: ${err.message}`);
+                    logger.show(); // Show log on failure
+                }
+            });
+        })
+    );
 }
 
-export function deactivate() {}
+export function deactivate() {
+    logger.dispose();
+}

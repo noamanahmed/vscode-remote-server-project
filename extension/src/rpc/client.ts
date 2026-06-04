@@ -1,4 +1,5 @@
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
+import { logger } from '../logger';
 
 export interface RPCRequest {
     id: number;
@@ -20,12 +21,46 @@ export class RPCClient {
 
     constructor(private url: string) {}
 
+    public setUrl(url: string) {
+        if (this.url !== url) {
+            logger.info(`URL changed to ${url}. Disconnecting existing socket.`);
+            this.url = url;
+            this.disconnect();
+        }
+    }
+
+    public disconnect() {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+    }
+
     async connect(): Promise<void> {
+        logger.info(`Connecting to daemon at ${this.url}...`);
         return new Promise((resolve, reject) => {
-            this.ws = new WebSocket(this.url);
-            this.ws.on('open', () => resolve());
-            this.ws.on('error', (err) => reject(err));
-            this.ws.on('message', (data) => this.handleMessage(data));
+            try {
+                this.ws = new WebSocket(this.url);
+                
+                this.ws.on('open', () => {
+                    logger.info(`Successfully connected to ${this.url}`);
+                    resolve();
+                });
+                
+                this.ws.on('error', (err) => {
+                    logger.error(`Connection error for ${this.url}: ${err.message}`);
+                    reject(err);
+                });
+                
+                this.ws.on('message', (data) => this.handleMessage(data));
+                
+                this.ws.on('close', () => {
+                    logger.info(`Disconnected from ${this.url}`);
+                });
+            } catch (err: any) {
+                logger.error(`Failed to create WebSocket: ${err.message}`);
+                reject(err);
+            }
         });
     }
 
@@ -35,6 +70,7 @@ export class RPCClient {
         if (pending) {
             this.pendingRequests.delete(response.id);
             if (response.error) {
+                logger.error(`RPC Error (ID:${response.id}): ${response.error}`);
                 pending.reject(new Error(response.error));
             } else {
                 pending.resolve(response.payload);
@@ -50,9 +86,15 @@ export class RPCClient {
         const id = this.nextId++;
         const request: RPCRequest = { id, type, payload };
 
+        logger.info(`RPC Call (ID:${id}): ${type}`);
+
         return new Promise((resolve, reject) => {
-            this.pendingRequests.set(id, { resolve, reject });
-            this.ws!.send(JSON.stringify(request));
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.pendingRequests.set(id, { resolve, reject });
+                this.ws.send(JSON.stringify(request));
+            } else {
+                reject(new Error('WebSocket is not open'));
+            }
         });
     }
 }
