@@ -8,8 +8,13 @@ const baseConfig = {
   format: "cjs",
   platform: "node",
   target: "node18",
-  outfile: "dist/extension.js",
-  entryPoints: ["src/extension.ts"],
+  outdir: "dist",
+  entryPoints: {
+    extension: "src/extension.ts",
+    "test/runTest": "src/test/runTest.ts",
+    "test/suite/index": "src/test/suite/index.ts",
+    "test/suite/extension.test": "src/test/suite/extension.test.ts",
+  },
 };
 
 async function main() {

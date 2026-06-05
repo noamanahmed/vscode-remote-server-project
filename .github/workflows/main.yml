@@ -1,0 +1,102 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'daemon/**'
+      - 'extension/**'
+      - 'VERSION'
+      - '.github/workflows/main.yml'
+  pull_request:
+    paths:
+      - 'daemon/**'
+      - 'extension/**'
+      - '.github/workflows/main.yml'
+
+jobs:
+  test-daemon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          cd daemon
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+      - name: Run tests
+        run: |
+          cd daemon
+          PYTHONPATH=. pytest
+
+  test-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'extension/package-lock.json'
+      - name: Install dependencies
+        run: |
+          cd extension
+          npm install
+      - name: Compile
+        run: |
+          cd extension
+          npm run compile
+      - name: Run tests
+        run: |
+          cd extension
+          xvfb-run -a npm test
+
+  release:
+    needs: [test-daemon, test-extension]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION_PREFIX=$(cat VERSION | xargs)
+          FULL_VERSION="${VERSION_PREFIX}.${{ github.run_number }}"
+          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+      - name: Update package.json version
+        working-directory: extension
+        run: npm version ${{ steps.get_version.outputs.version }} --no-git-tag-version
+      - name: Install dependencies
+        working-directory: extension
+        run: npm install
+      - name: Build extension
+        working-directory: extension
+        run: npm run package
+      - name: Create VSIX
+        working-directory: extension
+        run: npx @vscode/vsce package --no-dependencies
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: release-v${{ steps.get_version.outputs.version }}
+          files: |
+            extension/*.vsix
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
