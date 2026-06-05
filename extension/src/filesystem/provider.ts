@@ -28,22 +28,27 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
         const query = uri.query;
         let host = 'localhost';
         let port = 8765;
+        let token = '';
 
         if (query) {
             const params = new URLSearchParams(query);
             host = params.get('host') || vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
             const portParam = params.get('port');
             port = portParam ? parseInt(portParam) : vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+            token = params.get('token') || vscode.workspace.getConfiguration('remotefs').get('token', '');
         } else {
             host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
             port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+            token = vscode.workspace.getConfiguration('remotefs').get('token', '');
         }
 
         const url = `ws://${host}:${port}/ws`;
         let client = this.clients.get(url);
         if (!client) {
-            client = new RPCClient(url);
+            client = new RPCClient(url, token);
             this.clients.set(url, client);
+        } else {
+            client.setUrl(url, token);
         }
         return client;
     }
@@ -52,12 +57,15 @@ export class RemoteFSProvider implements vscode.FileSystemProvider {
         // If no URI provided, use global config for a general test
         const host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
         const port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
+        const token = vscode.workspace.getConfiguration('remotefs').get('token', '');
         const url = `ws://${host}:${port}/ws`;
         
         let client = this.clients.get(url);
         if (!client) {
-            client = new RPCClient(url);
+            client = new RPCClient(url, token);
             this.clients.set(url, client);
+        } else {
+            client.setUrl(url, token);
         }
         await client.connect();
     }

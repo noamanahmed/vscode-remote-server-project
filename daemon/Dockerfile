@@ -24,4 +24,4 @@ COPY . .
 EXPOSE 8765
 
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765", "--token", "verySecureToken@Ooops"]

@@ -20,12 +20,13 @@ export class RPCClient {
     private pendingRequests = new Map<number, { resolve: (val: any) => void, reject: (err: any) => void }>();
     private pendingStreams = new Map<number, (res: RPCResponse) => void>();
 
-    constructor(private url: string) {}
+    constructor(private url: string, private token: string = '') {}
 
-    public setUrl(url: string) {
-        if (this.url !== url) {
-            logger.info(`URL changed to ${url}. Disconnecting existing socket.`);
+    public setUrl(url: string, token: string = '') {
+        if (this.url !== url || this.token !== token) {
+            logger.info(`URL or token changed. Disconnecting existing socket.`);
             this.url = url;
+            this.token = token;
             this.disconnect();
         }
     }
@@ -38,10 +39,11 @@ export class RPCClient {
     }
 
     async connect(): Promise<void> {
-        logger.info(`Connecting to daemon at ${this.url}...`);
+        const fullUrl = this.token ? `${this.url}?token=${encodeURIComponent(this.token)}` : this.url;
+        logger.info(`Connecting to daemon at ${this.url} (token provided: ${!!this.token})...`);
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket(this.url);
+                this.ws = new WebSocket(fullUrl);
                 
                 this.ws.on('open', () => {
                     logger.info(`Successfully connected to ${this.url}`);

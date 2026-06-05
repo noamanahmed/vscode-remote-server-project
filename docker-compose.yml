@@ -10,6 +10,7 @@ services:
       - /:/host_root:ro # Optional: allow daemon to access host files for remote FS
     environment:
       - PYTHONPATH=/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765", "--token", "verySecureToken@Ooops"]
     restart: unless-stopped
 
 networks:

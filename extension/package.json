@@ -49,6 +49,11 @@
           "type": "number",
           "default": 8765,
           "description": "Port of the remote daemon"
+        },
+        "remotefs.token": {
+          "type": "string",
+          "default": "verySecureToken@Ooops",
+          "description": "Authentication token for the remote daemon"
         }
       }
     },

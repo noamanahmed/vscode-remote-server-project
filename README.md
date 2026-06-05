@@ -15,6 +15,8 @@ A high-performance **Hybrid Remote Filesystem** provider for VS Code. It combine
 - [x] **Streaming Results**: Search results appear in real-time as they are found.
 - [x] **Lazy Initialization**: Minimal overhead, daemon connection only starts when needed.
 
+
+
 ## Installation
 
 ### 1. Setup Daemon (on Server)
@@ -34,8 +36,9 @@ sudo apt install ripgrep
 
 ### 3. Run Daemon
 ```bash
-python3 -m app.main
+python3 -m app.main --token your-secret-token
 ```
+If the `--token` parameter is not provided, a random 32-character token will be generated and logged to the console.
 
 ## Auto-start on Boot
 
@@ -94,7 +97,7 @@ sshfs user@<server-ip>:/var/www/project /mnt/nfs/project
 ### CLI One-Liner
 Open a remote workspace directly from your terminal with custom connection settings:
 ```bash
-code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project&host=10.0.0.1&port=8765"
+code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project&host=10.0.0.1&port=8765&token=your-secret-token"
 ```
 
 ## Configuration
@@ -102,9 +105,11 @@ code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project&host
 Settings are managed in VS Code settings under `remotefs.*`:
 - `remotefs.host`: Daemon host address (default: `localhost`).
 - `remotefs.port`: Daemon port (default: `8765`).
+- `remotefs.token`: Authentication token (default: `verySecureToken@Ooops`).
 
-## Requirements
+## Troubleshooting
 
-- **Server**: Python 3.12+, `ripgrep`.
-- **Client**: VS Code 1.85.0+.
-- **Mount**: NFS or SSHFS recommended for optimal file IO performance.
+If you see an error like `start-stop-daemon: ... does not exist`, please verify:
+1. The project is cloned to the exact path specified (default: `/opt/vscode-remote-server-project`).
+2. The virtual environment has been created: `cd daemon && python3 -m venv venv`.
+3. You have copied the latest version of `remotefs.init` or `remotefs.service` to your system's init directory.

@@ -14,7 +14,7 @@ description="RemoteFS Daemon for VSCode"
 : ${REMOTEF_LOG:="/var/log/remotefs.log"}
 
 command="${REMOTEF_BIN}"
-command_args="-m app.main"
+command_args="-m app.main --token verySecureToken@Ooops"
 command_background="yes"
 command_user="${REMOTEF_USER}:${REMOTEF_GROUP}"
 directory="${REMOTEF_DIR}"

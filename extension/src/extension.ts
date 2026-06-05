@@ -113,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
                     },
                     async () => {
                         try {
-                            const client = remoteFSProvider.getClient?.();
+                            const client = remoteFSProvider.getClient(vscode.Uri.parse('remotefs:/'));
 
                             if (!client) {
                                 throw new Error('Client not initialized');
@@ -160,6 +160,13 @@ export function activate(context: vscode.ExtensionContext) {
                     if (portStr === undefined) return;
                     const port = parseInt(portStr);
 
+                    const token = await vscode.window.showInputBox({
+                        prompt: 'Enter Daemon Token',
+                        value: config.get<string>('token', 'verySecureToken@Ooops'),
+                        password: true
+                    });
+                    if (token === undefined) return;
+
                     const remotePath = await vscode.window.showInputBox({
                         prompt: 'Enter absolute path on remote server',
                         placeHolder: '/var/www/remote-project'
@@ -172,13 +179,14 @@ export function activate(context: vscode.ExtensionContext) {
                     });
                     if (!localPath) return;
 
-                    // Update global configuration for host/port
+                    // Update global configuration for host/port/token
                     await config.update('host', host, vscode.ConfigurationTarget.Global);
                     await config.update('port', port, vscode.ConfigurationTarget.Global);
+                    await config.update('token', token, vscode.ConfigurationTarget.Global);
 
                     // Open the workspace
                     const uri = vscode.Uri.parse(`remotefs:${localPath}`).with({
-                        query: `remote=${encodeURIComponent(remotePath)}`
+                        query: `remote=${encodeURIComponent(remotePath)}&host=${host}&port=${port}&token=${encodeURIComponent(token)}`
                     });
 
                     vscode.workspace.updateWorkspaceFolders(

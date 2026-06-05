@@ -3,7 +3,9 @@ import base64
 import json
 import asyncio
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import secrets
+import argparse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, status
 from .rpc.protocol import RPCRequest, RPCResponse
 from .filesystem import operations
 from .search import ripgrep
@@ -17,10 +19,19 @@ logger = logging.getLogger("remotefs-daemon")
 
 app = FastAPI(title="RemoteFS Daemon")
 
+# This will be set in the main block
+auth_token = None
+
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
+    if auth_token and token != auth_token:
+        logger.warning(f"Unauthorized connection attempt with token: {token}")
+        await websocket.accept() # Accept and then close with error or just close
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authentication token")
+        return
+
     await websocket.accept()
-    logger.info("WebSocket client connected")
+    logger.info("WebSocket client connected and authenticated")
     try:
         while True:
             data = await websocket.receive_text()
@@ -99,7 +110,20 @@ def check_ripgrep():
 
 if __name__ == "__main__":
     import uvicorn
+    parser = argparse.ArgumentParser(description="RemoteFS Daemon")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
+    parser.add_argument("--token", help="Authentication token (optional)")
+    args = parser.parse_args()
+
+    if args.token:
+        auth_token = args.token
+        logger.info(f"Authentication enabled with provided token")
+    else:
+        auth_token = secrets.token_urlsafe(32)
+        logger.info(f"Authentication enabled with generated token: {auth_token}")
+
     if check_ripgrep():
-        uvicorn.run(app, host="0.0.0.0", port=8765)
+        uvicorn.run(app, host=args.host, port=args.port)
     else:
         sys.exit(1)
