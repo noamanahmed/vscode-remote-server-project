@@ -26,7 +26,6 @@ auth_token = None
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
     if auth_token and token != auth_token:
         logger.warning(f"Unauthorized connection attempt with token: {token}")
-        await websocket.accept() # Accept and then close with error or just close
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authentication token")
         return
 

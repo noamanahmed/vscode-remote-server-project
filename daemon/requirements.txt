@@ -4,3 +4,6 @@ websockets
 pydantic
 aiofiles
 watchdog
+pytest
+pytest-asyncio
+httpx

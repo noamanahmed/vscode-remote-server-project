@@ -40,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
          * Text Search Provider
          */
         context.subscriptions.push(
-            vscode.workspace.registerTextSearchProvider(
+            (vscode.workspace as any).registerTextSearchProvider(
                 'remotefs',
                 new RemoteTextSearchProvider(getClient)
             )
@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
          * File Search Provider
          */
         context.subscriptions.push(
-            vscode.workspace.registerFileSearchProvider(
+            (vscode.workspace as any).registerFileSearchProvider(
                 'remotefs',
                 new RemoteFileSearchProvider(getClient)
             )
