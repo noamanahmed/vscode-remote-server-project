@@ -163,4 +163,18 @@ export class RPCClient {
             }
         }
     }
+
+    public dispose(): void {
+        logger.info(`Disposing RPC client for ${this.url}`);
+
+        this.disconnect();
+
+        const err = new Error('RPC client disposed');
+
+        this.pendingRequests.forEach(p => p.reject(err));
+
+        this.pendingRequests.clear();
+
+        this.pendingStreams.clear();
+    }
 }
