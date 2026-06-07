@@ -1,158 +1,352 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
+
 import { RPCClient } from '../rpc/client';
+
 import { logger } from '../logger';
 
-export class RemoteFSProvider implements vscode.FileSystemProvider {
-    private _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-    readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._onDidChangeFile.event;
+import { LocalFilesystemAdapter } from './adapters/localAdapter';
+import { RemoteFilesystemAdapter } from './adapters/remoteAdapter';
 
-    private clients = new Map<string, RPCClient>();
+import { OperationRouter } from './routing/operationRouter';
+
+import { parseRemoteFSUri } from './routing/parseRemoteFSUri';
+
+export class RemoteFSProvider
+    implements vscode.FileSystemProvider
+{
+    private readonly _onDidChangeFile =
+        new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+
+    readonly onDidChangeFile =
+        this._onDidChangeFile.event;
+
+    /**
+     * RPC clients keyed by:
+     * ws://host:port/ws
+     */
+    private readonly clients =
+        new Map<string, RPCClient>();
+
+    /**
+     * Adapters
+     */
+    private readonly localAdapter =
+        new LocalFilesystemAdapter();
+
+    private readonly remoteAdapter =
+        new RemoteFilesystemAdapter(
+            (uri) => this.getClient(uri)
+        );
+
+    /**
+     * Router
+     */
+    private readonly router =
+        new OperationRouter(
+            this.localAdapter,
+            this.remoteAdapter
+        );
 
     constructor() {
-        // Listen for configuration changes to possibly update existing clients
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('remotefs.host') || e.affectsConfiguration('remotefs.port')) {
-                // For simplicity, we'll just let new connections use the new global config
-                // and existing ones stay as they are defined by their workspace folder URIs.
+        logger.info(
+            'RemoteFSProvider initialized'
+        );
+
+        /**
+         * Configuration watcher
+         */
+        vscode.workspace.onDidChangeConfiguration(
+            (event) => {
+                if (
+                    event.affectsConfiguration(
+                        'remotefs'
+                    )
+                ) {
+                    logger.info(
+                        'RemoteFS configuration updated'
+                    );
+                }
             }
-        });
+        );
     }
 
-    private toLocalPath(uri: vscode.Uri): string {
-        return uri.path;
-    }
+    /**
+     * Resolve RPC client from URI
+     */
+    public getClient(
+        uri: vscode.Uri
+    ): RPCClient {
+        const parsed = parseRemoteFSUri(uri);
 
-    public getClient(uri: vscode.Uri): RPCClient {
-        const query = uri.query;
-        let host = 'localhost';
-        let port = 8765;
-        let token = '';
+        const url =
+            `ws://${parsed.host}:${parsed.port}/ws`;
 
-        if (query) {
-            const params = new URLSearchParams(query);
-            host = params.get('host') || vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
-            const portParam = params.get('port');
-            port = portParam ? parseInt(portParam) : vscode.workspace.getConfiguration('remotefs').get('port', 8765);
-            token = params.get('token') || vscode.workspace.getConfiguration('remotefs').get('token', '');
-        } else {
-            host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
-            port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
-            token = vscode.workspace.getConfiguration('remotefs').get('token', '');
-        }
-
-        const url = `ws://${host}:${port}/ws`;
         let client = this.clients.get(url);
+
         if (!client) {
-            client = new RPCClient(url, token);
+            logger.info(
+                `Creating RPC client ${url}`
+            );
+
+            client = new RPCClient(
+                url,
+                parsed.token ?? ''
+            );
+
             this.clients.set(url, client);
         } else {
-            client.setUrl(url, token);
+            /**
+             * Allow dynamic token refresh
+             */
+            client.setUrl(
+                url,
+                parsed.token ?? ''
+            );
         }
+
         return client;
     }
 
-    public async testConnection(uri?: vscode.Uri): Promise<void> {
-        // If no URI provided, use global config for a general test
-        const host = vscode.workspace.getConfiguration('remotefs').get('host', 'localhost');
-        const port = vscode.workspace.getConfiguration('remotefs').get('port', 8765);
-        const token = vscode.workspace.getConfiguration('remotefs').get('token', '');
-        const url = `ws://${host}:${port}/ws`;
-        
-        let client = this.clients.get(url);
-        if (!client) {
-            client = new RPCClient(url, token);
-            this.clients.set(url, client);
-        } else {
-            client.setUrl(url, token);
-        }
-        await client.connect();
-    }
-
-    watch(uri: vscode.Uri, options: { readonly recursive: boolean; readonly excludes: readonly string[] }): vscode.Disposable {
-        return new vscode.Disposable(() => {});
-    }
-
-    async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`stat (local): ${localPath}`);
-        
+    /**
+     * Manual connectivity test
+     */
+    public async testConnection(
+        uri?: vscode.Uri
+    ): Promise<void> {
         try {
-            const stats = await fs.promises.stat(localPath);
-            return {
-                type: stats.isFile() ? vscode.FileType.File : stats.isDirectory() ? vscode.FileType.Directory : vscode.FileType.Unknown,
-                ctime: stats.ctimeMs,
-                mtime: stats.mtimeMs,
-                size: stats.size
-            };
-        } catch (err: any) {
-            logger.error(`stat failed for ${localPath}: ${err.message}`);
-            throw vscode.FileSystemError.FileNotFound(uri);
-        }
-    }
+            const targetUri =
+                uri
+                ?? vscode.Uri.parse(
+                    'remotefs:/'
+                );
 
-    async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`readDirectory (local): ${localPath}`);
-        
-        try {
-            const entries = await fs.promises.readdir(localPath, { withFileTypes: true });
-            return entries.map(entry => {
-                const type = entry.isFile() ? vscode.FileType.File : entry.isDirectory() ? vscode.FileType.Directory : vscode.FileType.Unknown;
-                return [entry.name, type];
-            });
-        } catch (err: any) {
-            logger.error(`readDirectory failed for ${localPath}: ${err.message}`);
-            throw vscode.FileSystemError.FileNotFound(uri);
-        }
-    }
+            const client =
+                this.getClient(targetUri);
 
-    async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`readFile (local): ${localPath}`);
-        
-        try {
-            const content = await fs.promises.readFile(localPath);
-            return new Uint8Array(content);
-        } catch (err: any) {
-            logger.error(`readFile failed for ${localPath}: ${err.message}`);
-            throw vscode.FileSystemError.FileNotFound(uri);
-        }
-    }
+            await client.connect();
 
-    async writeFile(uri: vscode.Uri, content: Uint8Array, options: { readonly create: boolean; readonly overwrite: boolean }): Promise<void> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`writeFile (local): ${localPath}`);
-        
-        try {
-            const dir = path.dirname(localPath);
-            if (!fs.existsSync(dir)) {
-                await fs.promises.mkdir(dir, { recursive: true });
-            }
-            await fs.promises.writeFile(localPath, content);
+            logger.info(
+                'RemoteFS connection test successful'
+            );
         } catch (err: any) {
-            logger.error(`writeFile failed for ${localPath}: ${err.message}`);
+            logger.error(
+                `Connection test failed: ${
+                    err?.message ?? err
+                }`
+            );
+
             throw err;
         }
     }
 
-    async createDirectory(uri: vscode.Uri): Promise<void> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`createDirectory (local): ${localPath}`);
-        await fs.promises.mkdir(localPath, { recursive: true });
+    /**
+     * Watcher
+     *
+     * Future:
+     * - remote subscriptions
+     * - websocket change events
+     * - local fs.watch bridge
+     */
+    watch(
+        uri: vscode.Uri,
+        options: {
+            readonly recursive: boolean;
+
+            readonly excludes: readonly string[];
+        }
+    ): vscode.Disposable {
+        logger.info(
+            `watch ${uri.toString()}`
+        );
+
+        return new vscode.Disposable(() => {
+            logger.info(
+                `dispose watch ${uri.toString()}`
+            );
+        });
     }
 
-    async delete(uri: vscode.Uri, options: { readonly recursive: boolean }): Promise<void> {
-        const localPath = this.toLocalPath(uri);
-        logger.info(`delete (local): ${localPath}`);
-        await fs.promises.rm(localPath, { recursive: options.recursive });
+    /**
+     * stat
+     */
+    async stat(
+        uri: vscode.Uri
+    ): Promise<vscode.FileStat> {
+        return this.router
+            .getAdapter('stat', uri)
+            .stat(uri);
     }
 
-    async rename(uri: vscode.Uri, newUri: vscode.Uri, options: { readonly overwrite: boolean }): Promise<void> {
-        const oldPath = this.toLocalPath(uri);
-        const newPath = this.toLocalPath(newUri);
-        logger.info(`rename (local): ${oldPath} -> ${newPath}`);
-        await fs.promises.rename(oldPath, newPath);
+    /**
+     * readDirectory
+     */
+    async readDirectory(
+        uri: vscode.Uri
+    ): Promise<[string, vscode.FileType][]> {
+        return this.router
+            .getAdapter(
+                'readDirectory',
+                uri
+            )
+            .readDirectory(uri);
+    }
+
+    /**
+     * readFile
+     */
+    async readFile(
+        uri: vscode.Uri
+    ): Promise<Uint8Array> {
+        return this.router
+            .getAdapter(
+                'readFile',
+                uri
+            )
+            .readFile(uri);
+    }
+
+    /**
+     * writeFile
+     */
+    async writeFile(
+        uri: vscode.Uri,
+        content: Uint8Array,
+        options: {
+            readonly create: boolean;
+
+            readonly overwrite: boolean;
+        }
+    ): Promise<void> {
+        await this.router
+            .getAdapter(
+                'writeFile',
+                uri
+            )
+            .writeFile(
+                uri,
+                content,
+                options
+            );
+
+        this.fireFileChangeEvent(
+            vscode.FileChangeType.Changed,
+            uri
+        );
+    }
+
+    /**
+     * createDirectory
+     */
+    async createDirectory(
+        uri: vscode.Uri
+    ): Promise<void> {
+        await this.router
+            .getAdapter(
+                'createDirectory',
+                uri
+            )
+            .createDirectory(uri);
+
+        this.fireFileChangeEvent(
+            vscode.FileChangeType.Created,
+            uri
+        );
+    }
+
+    /**
+     * delete
+     */
+    async delete(
+        uri: vscode.Uri,
+        options: {
+            readonly recursive: boolean;
+        }
+    ): Promise<void> {
+        await this.router
+            .getAdapter(
+                'delete',
+                uri
+            )
+            .delete(
+                uri,
+                options
+            );
+
+        this.fireFileChangeEvent(
+            vscode.FileChangeType.Deleted,
+            uri
+        );
+    }
+
+    /**
+     * rename
+     */
+    async rename(
+        uri: vscode.Uri,
+        newUri: vscode.Uri,
+        options: {
+            readonly overwrite: boolean;
+        }
+    ): Promise<void> {
+        await this.router
+            .getAdapter(
+                'rename',
+                uri
+            )
+            .rename(
+                uri,
+                newUri,
+                options
+            );
+
+        this.fireFileChangeEvent(
+            vscode.FileChangeType.Deleted,
+            uri
+        );
+
+        this.fireFileChangeEvent(
+            vscode.FileChangeType.Created,
+            newUri
+        );
+    }
+
+    /**
+     * Emit filesystem change event
+     */
+    private fireFileChangeEvent(
+        type: vscode.FileChangeType,
+        uri: vscode.Uri
+    ): void {
+        this._onDidChangeFile.fire([
+            {
+                type,
+                uri
+            }
+        ]);
+    }
+
+    /**
+     * Dispose all RPC clients
+     */
+    public dispose(): void {
+        logger.info(
+            'Disposing RemoteFSProvider'
+        );
+
+        for (const client of this.clients.values()) {
+            try {
+                client.dispose?.();
+            } catch (err: any) {
+                logger.error(
+                    `Failed to dispose client: ${
+                        err?.message ?? err
+                    }`
+                );
+            }
+        }
+
+        this.clients.clear();
+
+        this._onDidChangeFile.dispose();
     }
 }
