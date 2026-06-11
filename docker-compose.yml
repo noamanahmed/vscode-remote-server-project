@@ -7,10 +7,10 @@ services:
       - "8765:8765"
     volumes:
       - ./daemon:/app
-      - /:/host_root:ro # Optional: allow daemon to access host files for remote FS
+      - ./workspace:/workspace # The folder the daemon serves (writable)
     environment:
       - PYTHONPATH=/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765", "--token", "verySecureToken@Ooops"]
+    command: ["python", "-m", "app.main", "--host", "0.0.0.0", "--port", "8765", "--folder", "/workspace", "--token", "verySecureToken@Ooops"]
     restart: unless-stopped
 
 networks:

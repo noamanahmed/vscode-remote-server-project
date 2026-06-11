@@ -23,5 +23,8 @@ COPY . .
 # Expose the port the daemon runs on
 EXPOSE 8765
 
+# The folder the daemon serves; override with --folder or REMOTEFS_FOLDER.
+ENV REMOTEFS_FOLDER=/workspace
+
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765", "--token", "verySecureToken@Ooops"]
+CMD ["python", "-m", "app.main", "--host", "0.0.0.0", "--port", "8765", "--folder", "/workspace", "--token", "verySecureToken@Ooops"]

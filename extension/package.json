@@ -12,8 +12,10 @@
   ],
   "activationEvents": [
     "onFileSystem:remotefs",
+    "onCommand:remotefs.connect",
+    "onCommand:remotefs.setupConnection",
     "onCommand:remotefs.testConnection",
-    "onCommand:remotefs.openWorkspace"
+    "onCommand:remotefs.openTerminal"
   ],
   "main": "./dist/extension.js",
   "enabledApiProposals": [
@@ -25,8 +27,8 @@
     "grammars": [],
     "commands": [
       {
-        "command": "remotefs.openWorkspace",
-        "title": "RemoteFS: Open Remote Workspace"
+        "command": "remotefs.connect",
+        "title": "RemoteFS: Connect to Remote Folder"
       },
       {
         "command": "remotefs.setupConnection",
@@ -35,6 +37,10 @@
       {
         "command": "remotefs.testConnection",
         "title": "RemoteFS: Test Connection"
+      },
+      {
+        "command": "remotefs.openTerminal",
+        "title": "RemoteFS: Open Remote Terminal"
       }
     ],
     "configuration": {

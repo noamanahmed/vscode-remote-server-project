@@ -6,7 +6,8 @@ After=network.target
 Type=simple
 User=%u
 WorkingDirectory=/opt/vscode-remote-server-project/daemon
-ExecStart=/opt/vscode-remote-server-project/daemon/venv/bin/python3 -m app.main --token verySecureToken@Ooops
+# --folder is the directory the daemon serves; change it to your project path.
+ExecStart=/opt/vscode-remote-server-project/daemon/venv/bin/python3 -m app.main --folder /opt/vscode-remote-server-project --token verySecureToken@Ooops
 Restart=always
 
 [Install]

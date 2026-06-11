@@ -12,9 +12,11 @@ description="RemoteFS Daemon for VSCode"
 : ${REMOTEF_GROUP:="root"}
 : ${REMOTEF_BIN:="${REMOTEF_DIR}/venv/bin/python3"}
 : ${REMOTEF_LOG:="/var/log/remotefs.log"}
+# Directory the daemon serves; change it to your project path.
+: ${REMOTEF_FOLDER:="/opt/vscode-remote-server-project"}
 
 command="${REMOTEF_BIN}"
-command_args="-m app.main --token verySecureToken@Ooops"
+command_args="-m app.main --folder ${REMOTEF_FOLDER} --token verySecureToken@Ooops"
 command_background="yes"
 command_user="${REMOTEF_USER}:${REMOTEF_GROUP}"
 directory="${REMOTEF_DIR}"

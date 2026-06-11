@@ -1,54 +1,35 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { RemoteFSProvider } from './filesystem/provider';
 import { RemoteTextSearchProvider } from './search/textSearchProvider';
 import { RemoteFileSearchProvider } from './search/fileSearchProvider';
+import { openRemoteTerminal } from './terminal/remoteTerminal';
 import { logger } from './logger';
+
+const ROOT_URI = vscode.Uri.from({ scheme: 'remotefs', path: '/' });
 
 export function activate(context: vscode.ExtensionContext) {
     try {
         logger.info('RemoteFS extension activating...');
 
-        /**
-         * IMPORTANT:
-         * Do NOT initialize network clients here.
-         * Keep everything lazy to avoid Extension Host crashes.
-         */
+        // Keep network lazy — no client created during activation.
         const remoteFSProvider = new RemoteFSProvider();
+        context.subscriptions.push(remoteFSProvider);
 
-        /**
-         * FileSystemProvider (core)
-         */
         context.subscriptions.push(
-            vscode.workspace.registerFileSystemProvider(
-                'remotefs',
-                remoteFSProvider,
-                {
-                    isCaseSensitive: true,
-                    isReadonly: false
-                }
-            )
+            vscode.workspace.registerFileSystemProvider('remotefs', remoteFSProvider, {
+                isCaseSensitive: true,
+                isReadonly: false
+            })
         );
 
-        /**
-         * Lazy client getter (safe pattern)
-         * Providers should NOT connect to daemon in constructor.
-         */
         const getClient = (uri: vscode.Uri) => remoteFSProvider.getClient(uri);
 
-        /**
-         * Text Search Provider
-         */
         context.subscriptions.push(
             (vscode.workspace as any).registerTextSearchProvider(
                 'remotefs',
                 new RemoteTextSearchProvider(getClient)
             )
         );
-
-        /**
-         * File Search Provider
-         */
         context.subscriptions.push(
             (vscode.workspace as any).registerFileSearchProvider(
                 'remotefs',
@@ -57,81 +38,31 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         /**
-         * Open workspace command
+         * Connect: open the daemon's served root as a workspace folder.
+         * The daemon decides which folder it serves (its --folder argument),
+         * so there are no local/remote path prompts anymore.
          */
         context.subscriptions.push(
-            vscode.commands.registerCommand('remotefs.openWorkspace', async () => {
-                try {
-                    const remotePath = await vscode.window.showInputBox({
-                        prompt: 'Enter absolute path on remote server',
-                        placeHolder: '/var/www/remote-project'
-                    });
-
-                    if (!remotePath) {
-                        return;
-                    }
-
-                    const localPath = await vscode.window.showInputBox({
-                        prompt: 'Enter local mount path of the remote folder',
-                        placeHolder: '/mnt/nfs/remote-project'
-                    });
-
-                    if (!localPath) {
-                        return;
-                    }
-
-                    // Encode mapping in URI: remotefs:/local/mount?remote=/remote/path
-                    const uri = vscode.Uri.parse(`remotefs:${localPath}`).with({
-                        query: `remote=${encodeURIComponent(remotePath)}`
-                    });
-
-                    vscode.workspace.updateWorkspaceFolders(
-                        vscode.workspace.workspaceFolders?.length || 0,
-                        0,
-                        {
-                            uri,
-                            name: `Remote: ${path.basename(remotePath)}`
-                        }
-                    );
-                } catch (err: any) {
-                    logger.error(`openWorkspace failed: ${err?.message ?? err}`);
-                    vscode.window.showErrorMessage('Failed to open workspace');
-                }
-            })
-        );
-
-        /**
-         * Test connection command (lazy init safe)
-         */
-        context.subscriptions.push(
-            vscode.commands.registerCommand('remotefs.testConnection', async () => {
+            vscode.commands.registerCommand('remotefs.connect', async () => {
                 await vscode.window.withProgress(
                     {
                         location: vscode.ProgressLocation.Notification,
-                        title: 'RemoteFS: Testing Connection...',
+                        title: 'RemoteFS: Connecting...',
                         cancellable: false
                     },
                     async () => {
                         try {
-                            const client = remoteFSProvider.getClient(vscode.Uri.parse('remotefs:/'));
-
-                            if (!client) {
-                                throw new Error('Client not initialized');
-                            }
-
-                            await remoteFSProvider.testConnection();
-
-                            vscode.window.showInformationMessage(
-                                'RemoteFS: Connection successful!'
+                            const info = await remoteFSProvider.init(ROOT_URI);
+                            const name = info?.name ? `Remote: ${info.name}` : 'Remote';
+                            vscode.workspace.updateWorkspaceFolders(
+                                vscode.workspace.workspaceFolders?.length || 0,
+                                0,
+                                { uri: ROOT_URI, name }
                             );
-
-                            logger.info('Connection test successful');
+                            vscode.window.showInformationMessage(`RemoteFS: Connected to ${name}`);
                         } catch (err: any) {
-                            logger.error(`Connection test failed: ${err?.message ?? err}`);
-                            vscode.window.showErrorMessage(
-                                `RemoteFS: Connection failed: ${err?.message ?? err}`
-                            );
-
+                            logger.error(`connect failed: ${err?.message ?? err}`);
+                            vscode.window.showErrorMessage(`RemoteFS: Connect failed: ${err?.message ?? err}`);
                             logger.show();
                         }
                     }
@@ -140,13 +71,13 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         /**
-         * Setup Connection command (Full setup)
+         * Setup Connection: configure host/port/token, then connect.
          */
         context.subscriptions.push(
             vscode.commands.registerCommand('remotefs.setupConnection', async () => {
                 try {
                     const config = vscode.workspace.getConfiguration('remotefs');
-                    
+
                     const host = await vscode.window.showInputBox({
                         prompt: 'Enter Daemon Host',
                         value: config.get<string>('host', 'localhost')
@@ -158,47 +89,19 @@ export function activate(context: vscode.ExtensionContext) {
                         value: config.get<number>('port', 8765).toString()
                     });
                     if (portStr === undefined) return;
-                    const port = parseInt(portStr);
 
                     const token = await vscode.window.showInputBox({
                         prompt: 'Enter Daemon Token',
-                        value: config.get<string>('token', 'verySecureToken@Ooops'),
+                        value: config.get<string>('token', ''),
                         password: true
                     });
                     if (token === undefined) return;
 
-                    const remotePath = await vscode.window.showInputBox({
-                        prompt: 'Enter absolute path on remote server',
-                        placeHolder: '/var/www/remote-project'
-                    });
-                    if (!remotePath) return;
-
-                    const localPath = await vscode.window.showInputBox({
-                        prompt: 'Enter local mount path of the remote folder',
-                        placeHolder: '/mnt/nfs/remote-project'
-                    });
-                    if (!localPath) return;
-
-                    // Update global configuration for host/port/token
                     await config.update('host', host, vscode.ConfigurationTarget.Global);
-                    await config.update('port', port, vscode.ConfigurationTarget.Global);
+                    await config.update('port', parseInt(portStr), vscode.ConfigurationTarget.Global);
                     await config.update('token', token, vscode.ConfigurationTarget.Global);
 
-                    // Open the workspace
-                    const uri = vscode.Uri.parse(`remotefs:${localPath}`).with({
-                        query: `remote=${encodeURIComponent(remotePath)}&host=${host}&port=${port}&token=${encodeURIComponent(token)}`
-                    });
-
-                    vscode.workspace.updateWorkspaceFolders(
-                        vscode.workspace.workspaceFolders?.length || 0,
-                        0,
-                        {
-                            uri,
-                            name: `Remote: ${path.basename(remotePath)}`
-                        }
-                    );
-
-                    vscode.window.showInformationMessage(`RemoteFS: Setup complete! Connected to ${host}:${port}`);
+                    await vscode.commands.executeCommand('remotefs.connect');
                 } catch (err: any) {
                     logger.error(`setupConnection failed: ${err?.message ?? err}`);
                     vscode.window.showErrorMessage('Failed to setup connection');
@@ -206,16 +109,52 @@ export function activate(context: vscode.ExtensionContext) {
             })
         );
 
+        /**
+         * Test Connection.
+         */
+        context.subscriptions.push(
+            vscode.commands.registerCommand('remotefs.testConnection', async () => {
+                await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: 'RemoteFS: Testing Connection...',
+                        cancellable: false
+                    },
+                    async () => {
+                        try {
+                            await remoteFSProvider.testConnection(ROOT_URI);
+                            vscode.window.showInformationMessage('RemoteFS: Connection successful!');
+                        } catch (err: any) {
+                            logger.error(`Connection test failed: ${err?.message ?? err}`);
+                            vscode.window.showErrorMessage(`RemoteFS: Connection failed: ${err?.message ?? err}`);
+                            logger.show();
+                        }
+                    }
+                );
+            })
+        );
+
+        /**
+         * Open Terminal: a real shell on the remote server.
+         */
+        context.subscriptions.push(
+            vscode.commands.registerCommand('remotefs.openTerminal', async () => {
+                try {
+                    const client = remoteFSProvider.getClient(ROOT_URI);
+                    await client.connect();
+                    const info = await remoteFSProvider.init(ROOT_URI).catch(() => undefined);
+                    openRemoteTerminal(client, info?.name ? `Remote: ${info.name}` : 'Remote');
+                } catch (err: any) {
+                    logger.error(`openTerminal failed: ${err?.message ?? err}`);
+                    vscode.window.showErrorMessage(`RemoteFS: Failed to open terminal: ${err?.message ?? err}`);
+                }
+            })
+        );
+
         logger.info('RemoteFS extension activated successfully');
     } catch (err: any) {
-        /**
-         * CRITICAL:
-         * Never allow activation to crash silently
-         */
         console.error('RemoteFS activation crash:', err);
-        vscode.window.showErrorMessage(
-            `RemoteFS failed to activate: ${err?.message ?? err}`
-        );
+        vscode.window.showErrorMessage(`RemoteFS failed to activate: ${err?.message ?? err}`);
     }
 }
 
