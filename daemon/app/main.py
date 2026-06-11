@@ -15,6 +15,7 @@ from .filesystem import operations
 from .filesystem.cache import DirectoryCache
 from .filesystem.watcher import FileWatcher
 from .git.watcher import GitWatcher
+from .git import operations as git_ops
 from .terminal.pty import TerminalManager
 from .search import ripgrep
 
@@ -252,6 +253,31 @@ async def handle_request(request: RPCRequest) -> Optional[RPCResponse]:
         if request.type == "expandedDirs":
             state.expanded_dirs = set(payload.get("paths", []))
             return RPCResponse(id=request.id, type="expandedDirs", payload={"success": True})
+
+        if request.type == "git.status":
+            result = await git_ops.status(state.root)
+            return RPCResponse(id=request.id, type="git.status", payload=result)
+
+        if request.type == "git.show":
+            content = await git_ops.show(state.root, payload["path"], payload.get("ref", "HEAD"))
+            encoded = base64.b64encode(content).decode("utf-8") if content is not None else None
+            return RPCResponse(id=request.id, type="git.show", payload={"content": encoded})
+
+        if request.type == "git.stage":
+            await git_ops.stage(state.root, payload["paths"])
+            return RPCResponse(id=request.id, type="git.stage", payload={"success": True})
+
+        if request.type == "git.unstage":
+            await git_ops.unstage(state.root, payload["paths"])
+            return RPCResponse(id=request.id, type="git.unstage", payload={"success": True})
+
+        if request.type == "git.discard":
+            await git_ops.discard(state.root, payload["paths"])
+            return RPCResponse(id=request.id, type="git.discard", payload={"success": True})
+
+        if request.type == "git.commit":
+            result = await git_ops.commit(state.root, payload["message"])
+            return RPCResponse(id=request.id, type="git.commit", payload=result)
 
         if request.type == "fileSearch":
             abs_path = state.resolve(payload["path"])

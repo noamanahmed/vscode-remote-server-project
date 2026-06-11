@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { RemoteFSProvider } from './filesystem/provider';
 import { RemoteTextSearchProvider } from './search/textSearchProvider';
 import { RemoteFileSearchProvider } from './search/fileSearchProvider';
-import { openRemoteTerminal } from './terminal/remoteTerminal';
+import { openRemoteTerminal, registerRemoteTerminalProfile } from './terminal/remoteTerminal';
+import { RemoteGitProvider } from './scm/gitProvider';
 import { setSeededParams, parseSeedFromUri } from './filesystem/connection';
 import { logger } from './logger';
 
@@ -42,6 +43,33 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         const getClient = (uri: vscode.Uri) => remoteFSProvider.getClient(uri);
+
+        /**
+         * Remote terminal profile — makes VS Code's terminal open the *server*
+         * shell. Users can set it as default via
+         * terminal.integrated.defaultProfile.
+         */
+        context.subscriptions.push(registerRemoteTerminalProfile(getClient));
+
+        /**
+         * Daemon-backed Source Control (the built-in Git extension can't see a
+         * remotefs:// workspace). Activated only when a remote folder is open.
+         */
+        const gitProvider = new RemoteGitProvider(ROOT_URI, getClient);
+        context.subscriptions.push(gitProvider);
+
+        const hasRemoteFolder = () =>
+            (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'remotefs');
+        const maybeActivateGit = () => {
+            if (hasRemoteFolder()) {
+                gitProvider.activate().catch(err =>
+                    logger.error(`SCM activation failed: ${err?.message ?? err}`));
+            }
+        };
+        maybeActivateGit();
+        context.subscriptions.push(
+            vscode.workspace.onDidChangeWorkspaceFolders(() => maybeActivateGit())
+        );
 
         // Search providers rely on proposed APIs; register defensively so a
         // host without them enabled doesn't abort the rest of activation.

@@ -41,8 +41,47 @@
       {
         "command": "remotefs.openTerminal",
         "title": "RemoteFS: Open Remote Terminal"
+      },
+      {
+        "command": "remotefs.git.commit",
+        "title": "Commit",
+        "category": "RemoteFS Git",
+        "icon": "$(check)"
+      },
+      {
+        "command": "remotefs.git.refresh",
+        "title": "Refresh",
+        "category": "RemoteFS Git",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "remotefs.git.stage",
+        "title": "Stage Changes",
+        "category": "RemoteFS Git",
+        "icon": "$(add)"
+      },
+      {
+        "command": "remotefs.git.unstage",
+        "title": "Unstage Changes",
+        "category": "RemoteFS Git",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "remotefs.git.discard",
+        "title": "Discard Changes",
+        "category": "RemoteFS Git",
+        "icon": "$(discard)"
       }
     ],
+    "terminal": {
+      "profiles": [
+        {
+          "id": "remotefs.terminalProfile",
+          "title": "Remote Shell",
+          "icon": "terminal"
+        }
+      ]
+    },
     "configuration": {
       "title": "RemoteFS",
       "properties": {
@@ -58,12 +97,72 @@
         },
         "remotefs.token": {
           "type": "string",
-          "default": "verySecureToken@Ooops",
+          "default": "",
           "description": "Authentication token for the remote daemon"
         }
       }
     },
-    "menus": {},
+    "menus": {
+      "scm/title": [
+        {
+          "command": "remotefs.git.commit",
+          "when": "scmProvider == remotefs",
+          "group": "navigation"
+        },
+        {
+          "command": "remotefs.git.refresh",
+          "when": "scmProvider == remotefs",
+          "group": "navigation"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "remotefs.git.stage",
+          "when": "scmProvider == remotefs && scmResourceGroup == changes",
+          "group": "inline"
+        },
+        {
+          "command": "remotefs.git.unstage",
+          "when": "scmProvider == remotefs && scmResourceGroup == staged",
+          "group": "inline"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "remotefs.git.stage",
+          "when": "scmProvider == remotefs && scmResourceGroup == changes",
+          "group": "inline"
+        },
+        {
+          "command": "remotefs.git.discard",
+          "when": "scmProvider == remotefs && scmResourceGroup == changes",
+          "group": "inline"
+        },
+        {
+          "command": "remotefs.git.unstage",
+          "when": "scmProvider == remotefs && scmResourceGroup == staged",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "remotefs.git.commit",
+          "when": "false"
+        },
+        {
+          "command": "remotefs.git.stage",
+          "when": "false"
+        },
+        {
+          "command": "remotefs.git.unstage",
+          "when": "false"
+        },
+        {
+          "command": "remotefs.git.discard",
+          "when": "false"
+        }
+      ]
+    },
     "submenus": []
   },
   "scripts": {

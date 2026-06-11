@@ -6,7 +6,7 @@ import { logger } from '../logger';
  * A VS Code Pseudoterminal backed by a real PTY on the daemon, so opening a
  * terminal gives the user the actual remote server shell.
  */
-class RemotePty implements vscode.Pseudoterminal {
+export class RemotePty implements vscode.Pseudoterminal {
     private readonly writeEmitter = new vscode.EventEmitter<string>();
     readonly onDidWrite = this.writeEmitter.event;
 
@@ -85,4 +85,31 @@ export function openRemoteTerminal(client: RPCClient, name = 'Remote'): vscode.T
     const terminal = vscode.window.createTerminal({ name, pty });
     terminal.show();
     return terminal;
+}
+
+/**
+ * Profile id; must match contributes.terminal.profiles[].id in package.json.
+ */
+export const REMOTE_TERMINAL_PROFILE_ID = 'remotefs.terminalProfile';
+
+/**
+ * Registers the remote shell as a terminal profile so it shows up in the
+ * terminal dropdown ("+" menu) and can be set as the default profile. This is
+ * what makes VS Code's terminal open the *server* shell instead of the local
+ * one.
+ */
+export function registerRemoteTerminalProfile(
+    getClient: (uri: vscode.Uri) => RPCClient
+): vscode.Disposable {
+    return vscode.window.registerTerminalProfileProvider(REMOTE_TERMINAL_PROFILE_ID, {
+        async provideTerminalProfile(): Promise<vscode.TerminalProfile> {
+            const rootUri = vscode.Uri.from({ scheme: 'remotefs', path: '/' });
+            const client = getClient(rootUri);
+            await client.connect();
+            return new vscode.TerminalProfile({
+                name: 'Remote Shell',
+                pty: new RemotePty(client)
+            });
+        }
+    });
 }
