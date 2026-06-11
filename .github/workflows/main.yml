@@ -79,7 +79,7 @@ jobs:
           echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
       - name: Update package.json version
         working-directory: extension
-        run: npm version ${{ steps.get_version.outputs.version }} --no-git-tag-version
+        run: npm version ${{ steps.get_version.outputs.version }}-${{ steps.get_version.outputs.date }} --no-git-tag-version
       - name: Install dependencies
         working-directory: extension
         run: npm install
