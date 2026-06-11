@@ -3,13 +3,32 @@ import { RemoteFSProvider } from './filesystem/provider';
 import { RemoteTextSearchProvider } from './search/textSearchProvider';
 import { RemoteFileSearchProvider } from './search/fileSearchProvider';
 import { openRemoteTerminal } from './terminal/remoteTerminal';
+import { setSeededParams, parseSeedFromUri } from './filesystem/connection';
 import { logger } from './logger';
 
 const ROOT_URI = vscode.Uri.from({ scheme: 'remotefs', path: '/' });
 
+/**
+ * If launched via `code --folder-uri "remotefs:/?host=..&port=..&token=.."`,
+ * adopt those connection params so the one-liner is self-contained.
+ */
+function seedConnectionFromWorkspace(): void {
+    const folder = (vscode.workspace.workspaceFolders ?? [])
+        .find(f => f.uri.scheme === 'remotefs');
+    if (folder) {
+        const seed = parseSeedFromUri(folder.uri);
+        if (Object.keys(seed).length) {
+            logger.info(`Seeding connection from workspace URI: host=${seed.host} port=${seed.port}`);
+            setSeededParams(seed);
+        }
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     try {
         logger.info('RemoteFS extension activating...');
+
+        seedConnectionFromWorkspace();
 
         // Keep network lazy — no client created during activation.
         const remoteFSProvider = new RemoteFSProvider();
@@ -24,18 +43,25 @@ export function activate(context: vscode.ExtensionContext) {
 
         const getClient = (uri: vscode.Uri) => remoteFSProvider.getClient(uri);
 
-        context.subscriptions.push(
-            (vscode.workspace as any).registerTextSearchProvider(
-                'remotefs',
-                new RemoteTextSearchProvider(getClient)
-            )
-        );
-        context.subscriptions.push(
-            (vscode.workspace as any).registerFileSearchProvider(
-                'remotefs',
-                new RemoteFileSearchProvider(getClient)
-            )
-        );
+        // Search providers rely on proposed APIs; register defensively so a
+        // host without them enabled doesn't abort the rest of activation.
+        try {
+            context.subscriptions.push(
+                (vscode.workspace as any).registerFileSearchProvider(
+                    'remotefs',
+                    new RemoteFileSearchProvider(getClient)
+                )
+            );
+            context.subscriptions.push(
+                (vscode.workspace as any).registerTextSearchProvider(
+                    'remotefs',
+                    new RemoteTextSearchProvider(getClient)
+                )
+            );
+            logger.info('Search providers registered');
+        } catch (err: any) {
+            logger.error(`Failed to register search providers (proposed API may be disabled): ${err?.message ?? err}`);
+        }
 
         /**
          * Connect: open the daemon's served root as a workspace folder.

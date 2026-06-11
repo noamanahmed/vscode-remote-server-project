@@ -1,25 +1,34 @@
 # RemoteFS VS Code Extension
 
-A high-performance **Hybrid Remote Filesystem** provider for VS Code. It combines the speed of local filesystem access (via NFS/SSHFS) with the power of server-side searching (via `ripgrep`).
+A **daemon-first remote filesystem** provider for VS Code. Every operation —
+file read/write, directory listing, search, and the integrated terminal — runs
+on a lightweight Python daemon on your server and streams to VS Code over a
+single WebSocket. There is **no local mount to set up**: the daemon serves one
+folder, and VS Code talks to it directly.
 
 ## Architecture
 
-- **Hybrid Filesystem**: Standard operations (read/write/directory listing) are performed locally on a mounted remote folder, ensuring zero network lag for common IDE tasks.
-- **Remote Search Daemon**: A Python 3.12+ backend running on the server, leveraging `ripgrep` to perform blazing fast global searches and streaming results back to VS Code via WebSockets.
+- **Daemon-first I/O**: All filesystem operations are executed on the server by the daemon. The extension is a thin client; nothing is read from a local mount.
+- **Served folder**: The daemon serves a single root directory (its `--folder` argument). All paths VS Code sends are relative to that root.
+- **Top-level cache**: The daemon warms the first-level directory listing at startup so the explorer paints in a single round-trip on first connect.
+- **Live file watching**: A server-side watcher pushes create/update/delete events to VS Code so the explorer and open editors stay in sync automatically.
+- **Git branch monitoring**: When the branch changes on the server, the daemon resends the top-level tree (and any directories you have expanded) so the workspace reflects the new branch.
+- **Override detection**: When you switch back to an open file after a dropped connection, the extension verifies it against the server and warns you if it was overwritten while you had unsaved edits.
+- **Remote terminal**: Open a real shell on the server (a true PTY) directly inside VS Code.
+- **Remote search**: Project-wide text and filename search via `ripgrep` on the server, streamed in real time.
 
 ## Features
 
-- [x] **Hybrid IO**: Blazing fast file access via local mount (NFS/SSHFS).
-- [x] **Remote Search**: Deep project search using `ripgrep` on the server.
-- [x] **Dual Path Mapping**: Map high-level remote paths to specific local mount points per workspace folder.
-- [x] **Streaming Results**: Search results appear in real-time as they are found.
-- [x] **Lazy Initialization**: Minimal overhead, daemon connection only starts when needed.
-
-
+- [x] **Fully remote operations** — read/write/list/rename/delete all happen on the daemon.
+- [x] **Server-side file watcher** — external changes appear in VS Code instantly.
+- [x] **Git branch awareness** — the tree refreshes when the branch changes.
+- [x] **Remote terminal** — a real server shell inside VS Code.
+- [x] **Stale/override detection** — never silently lose work to a server-side overwrite.
+- [x] **Remote search** — deep project search with `ripgrep`, streamed live.
 
 ## Installation
 
-### 1. Setup Daemon (on Server)
+### 1. Setup the Daemon (on the server)
 
 ```bash
 cd daemon
@@ -29,24 +38,74 @@ pip install -r requirements.txt
 ```
 
 ### 2. Install ripgrep
-The daemon requires `ripgrep` (`rg`) to be installed and in the server's `$PATH`.
+
+The daemon requires `ripgrep` (`rg`) on the server's `$PATH`:
+
 ```bash
 sudo apt install ripgrep
 ```
 
-### 3. Run Daemon
+### 3. Run the Daemon
+
 ```bash
-python3 -m app.main --token your-secret-token
+python3 -m app.main --folder /var/www/your-project --token your-secret-token
 ```
-If the `--token` parameter is not provided, a random 32-character token will be generated and logged to the console.
+
+- `--folder` is the directory the daemon serves (defaults to the current working directory).
+- `--host` / `--port` control the bind address (defaults: `0.0.0.0` / `8765`).
+- If `--token` is omitted, a random token is generated and logged to the console.
+
+You can also configure the daemon via environment variables (`REMOTEFS_FOLDER`,
+`REMOTEFS_TOKEN`), which is convenient when launching with `uvicorn` or Docker.
+
+## Connecting from VS Code
+
+### Option A — Command Palette
+
+1. Open the Command Palette (`Ctrl+Shift+P`).
+2. Run **RemoteFS: Setup Connection** and enter the daemon **Host**, **Port**, and **Token**.
+   The extension stores these in settings and opens the served folder.
+
+Already configured? Just run **RemoteFS: Connect to Remote Folder**.
+
+### Option B — CLI One-Liner
+
+Open the remote folder directly from your terminal, passing the connection
+details in the URI:
+
+```bash
+code --folder-uri "remotefs:/?host=10.0.0.1&port=8765&token=your-secret-token"
+```
+
+The path is always `/` — the daemon decides which folder is served via its
+`--folder` argument. The `host`/`port`/`token` query values are adopted
+automatically on launch.
+
+### Open a Remote Terminal
+
+Run **RemoteFS: Open Remote Terminal** from the Command Palette to get a real
+shell on the server.
+
+## Configuration
+
+Settings live under `remotefs.*` in VS Code settings:
+
+- `remotefs.host`: Daemon host address (default: `localhost`).
+- `remotefs.port`: Daemon port (default: `8765`).
+- `remotefs.token`: Authentication token (default: empty).
+
+Connection values passed in the launch URI (Option B) take precedence over these
+settings for that window.
 
 ## Auto-start on Boot
 
-If the project is cloned to `/opt/vscode-remote-server-project`, you can use the provided startup scripts.
+If the project is cloned to `/opt/vscode-remote-server-project`, you can use the
+provided startup scripts. Edit the `--folder` path in them to point at the
+directory you want to serve.
 
 ### For Systemd (Ubuntu, Debian, CentOS, etc.)
 
-1. Edit `remotefs.service` if needed (it assumes `/opt/vscode-remote-server-project`).
+1. Edit `remotefs.service` and set `--folder` to your project path.
 2. Copy the service file to systemd:
    ```bash
    sudo cp /opt/vscode-remote-server-project/remotefs.service /etc/systemd/system/
@@ -73,43 +132,8 @@ If the project is cloned to `/opt/vscode-remote-server-project`, you can use the
    sudo rc-update add remotefs default
    ```
 
-## Mounting the Remote Filesystem
-
-RemoteFS works best when your remote project folder is mounted locally.
-
-### Via NFS (Recommended for Performance)
-```bash
-sudo mount -t nfs <server-ip>:/var/www/project /mnt/nfs/project
-```
-
-### Via SSHFS
-```bash
-sshfs user@<server-ip>:/var/www/project /mnt/nfs/project
-```
-
-## Usage
-
-### Direct Setup
-1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run `RemoteFS: Setup Connection`.
-3. Follow the prompts to enter Host, Port, Remote Path, and Local Mount Path.
-
-### CLI One-Liner
-Open a remote workspace directly from your terminal with custom connection settings:
-```bash
-code --folder-uri "remotefs:/mnt/nfs/project?remote=/var/www/remote-project&host=10.0.0.1&port=8765&token=your-secret-token"
-```
-
-## Configuration
-
-Settings are managed in VS Code settings under `remotefs.*`:
-- `remotefs.host`: Daemon host address (default: `localhost`).
-- `remotefs.port`: Daemon port (default: `8765`).
-- `remotefs.token`: Authentication token (default: `verySecureToken@Ooops`).
-
 ## Troubleshooting
 
-If you see an error like `start-stop-daemon: ... does not exist`, please verify:
-1. The project is cloned to the exact path specified (default: `/opt/vscode-remote-server-project`).
-2. The virtual environment has been created: `cd daemon && python3 -m venv venv`.
-3. You have copied the latest version of `remotefs.init` or `remotefs.service` to your system's init directory.
+- **Quick Open (`Ctrl+P`) or Search returns nothing**: these rely on VS Code's proposed search APIs. Make sure you are running a build of VS Code where the extension's proposed APIs are enabled.
+- **`start-stop-daemon: ... does not exist`**: verify the project path, that the virtualenv exists (`cd daemon && python3 -m venv venv`), and that you copied the latest `remotefs.init` / `remotefs.service`.
+- **Connection fails**: confirm the daemon is running, the port is reachable, and the token matches.

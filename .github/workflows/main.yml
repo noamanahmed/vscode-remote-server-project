@@ -76,6 +76,7 @@ jobs:
           VERSION_PREFIX=$(cat VERSION | xargs)
           FULL_VERSION="${VERSION_PREFIX}.${{ github.run_number }}"
           echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
       - name: Update package.json version
         working-directory: extension
         run: npm version ${{ steps.get_version.outputs.version }} --no-git-tag-version
@@ -93,7 +94,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
-          name: release-v${{ steps.get_version.outputs.version }}
+          name: release-v${{ steps.get_version.outputs.version }}-${{ steps.get_version.outputs.date }}
           files: |
             extension/*.vsix
           draft: false
