@@ -1,14 +1,45 @@
 import os
 import pty
 import fcntl
+import shutil
 import struct
 import signal
 import termios
 import asyncio
 import logging
-from typing import Dict, Callable, Awaitable, Optional
+from typing import Dict, Callable, Awaitable, Optional, List
 
 logger = logging.getLogger("remotefs-daemon.terminal")
+
+# Candidate shells in preference order, covering Debian/Ubuntu (bash) and
+# Alpine/BusyBox (ash/sh) and zsh-based systems.
+_SHELL_CANDIDATES = [
+    "/bin/bash", "/usr/bin/bash",
+    "/bin/zsh", "/usr/bin/zsh",
+    "/bin/ash", "/usr/bin/ash",
+    "/bin/sh", "/usr/bin/sh",
+]
+
+
+def _resolve_shell() -> str:
+    """Pick a usable login shell that exists on this host (bash on Debian,
+    ash/sh on Alpine, etc.)."""
+    env_shell = os.environ.get("SHELL")
+    if env_shell and os.path.isfile(env_shell) and os.access(env_shell, os.X_OK):
+        return env_shell
+    for cand in _SHELL_CANDIDATES:
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return shutil.which("sh") or "/bin/sh"
+
+
+def _shell_argv(shell: str) -> List[str]:
+    """Login shell for bash/zsh (sources profiles); a bare interactive shell for
+    minimal sh/ash variants that may reject -l."""
+    base = os.path.basename(shell)
+    if base in ("bash", "zsh"):
+        return [shell, "-l"]
+    return [shell]
 
 
 class _Terminal:
@@ -33,24 +64,29 @@ class TerminalManager:
         self._terminals: Dict[str, _Terminal] = {}
         self._counter = 0
 
-    def _shell(self) -> str:
-        return os.environ.get("SHELL") or "/bin/bash"
-
     def create(self, cols: int = 80, rows: int = 24) -> str:
         self._counter += 1
         terminal_id = f"t{self._counter}"
 
+        shell = _resolve_shell()
+        argv = _shell_argv(shell)
+        cwd = self._cwd
+        logger.info(f"Spawning terminal {terminal_id} with shell {shell}")
+
         pid, master_fd = pty.fork()
         if pid == 0:
-            # Child: become the shell. Errors here can only _exit.
+            # Child. It must NEVER return into the parent's event-loop code,
+            # even if exec fails (a missing shell, etc.) — always _exit.
             try:
-                os.chdir(self._cwd)
-            except Exception:
+                try:
+                    os.chdir(cwd)
+                except Exception:
+                    pass
+                env = os.environ.copy()
+                env["TERM"] = env.get("TERM", "xterm-256color")
+                os.execvpe(shell, argv, env)
+            except BaseException:
                 pass
-            env = os.environ.copy()
-            env["TERM"] = env.get("TERM", "xterm-256color")
-            shell = self._shell()
-            os.execvpe(shell, [shell, "-l"], env)
             os._exit(127)
 
         # Parent.
