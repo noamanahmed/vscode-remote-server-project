@@ -254,6 +254,10 @@ async def handle_request(request: RPCRequest) -> Optional[RPCResponse]:
             state.expanded_dirs = set(payload.get("paths", []))
             return RPCResponse(id=request.id, type="expandedDirs", payload={"success": True})
 
+        if request.type == "git.isRepo":
+            result = await git_ops.is_repo(state.root)
+            return RPCResponse(id=request.id, type="git.isRepo", payload={"isRepo": result})
+
         if request.type == "git.status":
             result = await git_ops.status(state.root)
             return RPCResponse(id=request.id, type="git.status", payload=result)

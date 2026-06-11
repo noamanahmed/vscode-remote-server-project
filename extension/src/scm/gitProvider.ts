@@ -6,6 +6,8 @@ import { logger } from '../logger';
 
 const ORIGINAL_SCHEME = 'remotefs-git';
 
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 interface StatusEntry {
     path: string;
     origPath: string | null;
@@ -92,7 +94,7 @@ export class RemoteGitProvider implements vscode.Disposable {
     private readonly disposables: vscode.Disposable[] = [];
     private eventSub: { dispose(): void } | null = null;
     private refreshTimer: NodeJS.Timeout | null = null;
-    private activated = false;
+    private activating = false;
 
     constructor(
         private readonly rootUri: vscode.Uri,
@@ -108,22 +110,53 @@ export class RemoteGitProvider implements vscode.Disposable {
         this.registerCommands();
     }
 
-    /** Connect, subscribe to change events, and load initial status. */
+    /**
+     * Connect, confirm the served folder is a git repo, register the Source
+     * Control provider, and load status. Retries on transient connection
+     * errors and logs every step to the RemoteFS output channel so failures
+     * are diagnosable rather than silent.
+     */
     public async activate(): Promise<void> {
-        if (this.activated) {
-            await this.refresh();
+        const client = this.getClient(this.rootUri);
+
+        // Subscribe to change events (and re-activate on reconnect) exactly once.
+        if (!this.eventSub) {
+            this.eventSub = client.onEvent((e) => {
+                if (e.type === 'fs.changed' || e.type === 'git.branchChanged') {
+                    this.scheduleRefresh();
+                }
+            });
+            client.onReconnect(() => { void this.activate(); });
+        }
+
+        if (this.activating) {
             return;
         }
-        this.activated = true;
-
-        const client = this.getClient(this.rootUri);
-        this.eventSub = client.onEvent((e) => {
-            if (e.type === 'fs.changed' || e.type === 'git.branchChanged') {
-                this.scheduleRefresh();
+        this.activating = true;
+        try {
+            for (let attempt = 1; attempt <= 5; attempt++) {
+                try {
+                    await client.connect();
+                    const repo = await client.call('git.isRepo', {});
+                    if (!repo?.isRepo) {
+                        logger.info('RemoteFS Git: served folder is not a git repository — Source Control hidden. (Check the daemon log; ensure git is installed and --folder is the repo.)');
+                        return;
+                    }
+                    // Create the provider up-front so it appears even before the
+                    // first status resolves.
+                    this.ensureScm();
+                    logger.info('RemoteFS Git: Source Control provider registered.');
+                    await this.refresh();
+                    return;
+                } catch (err: any) {
+                    logger.error(`RemoteFS Git: activation attempt ${attempt}/5 failed: ${err?.message ?? err}`);
+                    await delay(800 * attempt);
+                }
             }
-        });
-        client.onReconnect(() => this.scheduleRefresh());
-        await this.refresh();
+            logger.error('RemoteFS Git: could not activate Source Control after retries. Run "RemoteFS Git: Refresh" to retry.');
+        } finally {
+            this.activating = false;
+        }
     }
 
     private scheduleRefresh(): void {
@@ -159,8 +192,7 @@ export class RemoteGitProvider implements vscode.Disposable {
         try {
             res = await client.call('git.status', {});
         } catch (err: any) {
-            // Not a git repository (or git unavailable) — leave SCM hidden.
-            logger.info(`git.status unavailable: ${err?.message ?? err}`);
+            logger.error(`RemoteFS Git: git.status failed: ${err?.message ?? err}`);
             return;
         }
 
@@ -252,7 +284,7 @@ export class RemoteGitProvider implements vscode.Disposable {
         const reg = (id: string, fn: (...args: any[]) => any) =>
             this.disposables.push(vscode.commands.registerCommand(id, fn));
 
-        reg('remotefs.git.refresh', () => this.refresh());
+        reg('remotefs.git.refresh', () => this.activate());
         reg('remotefs.git.commit', () => this.commit());
         reg('remotefs.git.stage', (...args) => this.runOnPaths('git.stage', args));
         reg('remotefs.git.unstage', (...args) => this.runOnPaths('git.unstage', args));

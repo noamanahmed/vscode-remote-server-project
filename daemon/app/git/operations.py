@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -25,10 +26,17 @@ async def _run_git(root: str, args: List[str], check: bool = True) -> bytes:
 
 
 async def is_repo(root: str) -> bool:
+    if not shutil.which("git"):
+        logger.error("git binary not found on PATH; Source Control will be unavailable")
+        return False
     try:
         out = await _run_git(root, ["rev-parse", "--is-inside-work-tree"], check=False)
-        return out.decode().strip() == "true"
-    except Exception:
+        result = out.decode().strip() == "true"
+        if not result:
+            logger.info(f"{root} is not inside a git work tree")
+        return result
+    except Exception as e:
+        logger.error(f"is_repo check failed for {root}: {e}")
         return False
 
 
